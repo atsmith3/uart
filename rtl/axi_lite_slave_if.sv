@@ -163,9 +163,8 @@ module axi_lite_slave_if #(
     assign bresp = wr_error_reg ? RESP_SLVERR : RESP_OKAY;
 
     // Register write interface
-    assign reg_wen = (wr_state == W_WAIT_DATA && wvalid) ||
-                     (wr_state == W_WAIT_ADDR && awvalid) ||
-                     (wr_state == W_IDLE && awvalid && wvalid);
+    // Assert when we enter W_RESPONSE (registers are stable)
+    assign reg_wen = (wr_state == W_RESPONSE);
 
     // Mux between write and read address
     assign reg_addr = (rd_state != R_IDLE) ? rd_addr_reg[REG_ADDR_WIDTH+1:2] : wr_addr_reg[REG_ADDR_WIDTH+1:2];
