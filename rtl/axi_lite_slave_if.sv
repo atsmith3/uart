@@ -167,7 +167,8 @@ module axi_lite_slave_if #(
                      (wr_state == W_WAIT_ADDR && awvalid) ||
                      (wr_state == W_IDLE && awvalid && wvalid);
 
-    assign reg_addr = wr_addr_reg[REG_ADDR_WIDTH+1:2];  // Word-aligned
+    // Mux between write and read address
+    assign reg_addr = (rd_state != R_IDLE) ? rd_addr_reg[REG_ADDR_WIDTH+1:2] : wr_addr_reg[REG_ADDR_WIDTH+1:2];
     assign reg_wdata = wr_data_reg;
     assign reg_wstrb = wr_strb_reg;
 
@@ -212,6 +213,6 @@ module axi_lite_slave_if #(
     assign rresp = rd_error_reg ? RESP_SLVERR : RESP_OKAY;
 
     // Register read interface
-    assign reg_ren = (rd_state == R_IDLE && arvalid);
+    assign reg_ren = (rd_state == R_IDLE && arvalid) || (rd_state == R_READ);
 
 endmodule

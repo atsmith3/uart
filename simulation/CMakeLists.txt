@@ -68,6 +68,7 @@ target_include_directories(verilated_uart PUBLIC
 add_executable(uart_system_tests
   tests/test_main.cpp
   tests/uart_loopback_tests.cpp
+  tests/uart_full_duplex_tests.cpp
 )
 
 target_link_libraries(uart_system_tests

@@ -165,10 +165,13 @@ struct UARTSystemFixture {
         for (int i = 0; i < max_ticks; i++) {
             uint32_t status = uart_status();
             if (!(status & status::RX_EMPTY)) {
+                std::cout << "RX ready after " << i << " iterations" << std::endl;
                 return;
             }
             tick_both(10);
         }
+        std::cout << "ERROR: Timeout waiting for RX data. Final status: 0x"
+                  << std::hex << uart_status() << std::dec << std::endl;
         BOOST_FAIL("Timeout waiting for RX data");
     }
 };
@@ -176,16 +179,27 @@ struct UARTSystemFixture {
 // Basic loopback test: send one byte
 BOOST_FIXTURE_TEST_CASE(loopback_single_byte, UARTSystemFixture) {
     reset();
+
+    std::cout << "Status after reset: 0x" << std::hex << uart_status() << std::dec << std::endl;
+
     uart_init(baud::BAUD_115200);
+
+    std::cout << "Status after init: 0x" << std::hex << uart_status() << std::dec << std::endl;
+    std::cout << "CTRL register: 0x" << std::hex << axi_read(reg::CTRL) << std::dec << std::endl;
+    std::cout << "BAUD_DIV register: 0x" << std::hex << axi_read(reg::BAUD_DIV) << std::dec << std::endl;
 
     // Send a byte
     uart_send(0xAB);
+
+    std::cout << "Status after send: 0x" << std::hex << uart_status() << std::dec << std::endl;
 
     // Wait for it to arrive
     wait_rx_ready();
 
     // Read it back
     uint8_t received = uart_receive();
+
+    std::cout << "Received: 0x" << std::hex << (int)received << std::dec << std::endl;
 
     BOOST_CHECK_EQUAL(received, 0xAB);
 }
