@@ -36,7 +36,11 @@ set(RTL_ROOT ${WORKSPACE}/rtl)
 set(RTL_SRC
   ${RTL_ROOT}/uart_top.sv
   ${RTL_ROOT}/bit_sync.sv
+  ${RTL_ROOT}/multi_bit_sync.sv
+  ${RTL_ROOT}/gray_sync.sv
+  ${RTL_ROOT}/pulse_sync.sv
   ${RTL_ROOT}/sync_fifo.sv
+  ${RTL_ROOT}/async_fifo.sv
   ${RTL_ROOT}/uart_baud_gen.sv
   ${RTL_ROOT}/uart_tx.sv
   ${RTL_ROOT}/uart_rx.sv
@@ -116,6 +120,13 @@ verilate(verilated_uart_rx COVERAGE TRACE
   SOURCES ${RTL_ROOT}/uart_rx.sv ${RTL_ROOT}/bit_sync.sv
 )
 
+# Async FIFO
+add_library(verilated_async_fifo STATIC)
+verilate(verilated_async_fifo COVERAGE TRACE
+  PREFIX Vasync_fifo
+  SOURCES ${RTL_ROOT}/async_fifo.sv
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
@@ -124,6 +135,7 @@ add_executable(module_tests
   tests/module/baud_gen_test.cpp
   tests/module/uart_tx_test.cpp
   tests/module/uart_rx_test.cpp
+  tests/async_fifo_tests.cpp
 )
 
 target_link_libraries(module_tests
@@ -132,6 +144,7 @@ target_link_libraries(module_tests
   verilated_baud_gen
   verilated_uart_tx
   verilated_uart_rx
+  verilated_async_fifo
   ${Boost_LIBRARIES}
 )
 

@@ -24,9 +24,9 @@ struct UARTFullDuplexFixture {
     UARTFullDuplexFixture() : time_counter(0) {
         // Initialize UART A
         uart_a = new Vuart_top;
-        uart_a->clk = 0;
+        uart_a->uart_top__02Eclk = 0;
         uart_a->uart_clk = 0;
-        uart_a->rst_n = 0;
+        uart_a->uart_top__02Erst_n = 0;
         uart_a->s_axi_awvalid = 0;
         uart_a->s_axi_wvalid = 0;
         uart_a->s_axi_bready = 1;
@@ -36,9 +36,9 @@ struct UARTFullDuplexFixture {
 
         // Initialize UART B
         uart_b = new Vuart_top;
-        uart_b->clk = 0;
+        uart_b->uart_top__02Eclk = 0;
         uart_b->uart_clk = 0;
-        uart_b->rst_n = 0;
+        uart_b->uart_top__02Erst_n = 0;
         uart_b->s_axi_awvalid = 0;
         uart_b->s_axi_wvalid = 0;
         uart_b->s_axi_bready = 1;
@@ -54,14 +54,14 @@ struct UARTFullDuplexFixture {
 
     void tick_axi() {
         // Tick AXI clock for both UARTs
-        uart_a->clk = 0;
-        uart_b->clk = 0;
+        uart_a->uart_top__02Eclk = 0;
+        uart_b->uart_top__02Eclk = 0;
         uart_a->eval();
         uart_b->eval();
         time_counter++;
 
-        uart_a->clk = 1;
-        uart_b->clk = 1;
+        uart_a->uart_top__02Eclk = 1;
+        uart_b->uart_top__02Eclk = 1;
         uart_a->eval();
         uart_b->eval();
         time_counter++;
@@ -102,11 +102,11 @@ struct UARTFullDuplexFixture {
     }
 
     void reset() {
-        uart_a->rst_n = 0;
-        uart_b->rst_n = 0;
+        uart_a->uart_top__02Erst_n = 0;
+        uart_b->uart_top__02Erst_n = 0;
         tick_both(10);
-        uart_a->rst_n = 1;
-        uart_b->rst_n = 1;
+        uart_a->uart_top__02Erst_n = 1;
+        uart_b->uart_top__02Erst_n = 1;
         tick_both(10);
     }
 

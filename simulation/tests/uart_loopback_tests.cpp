@@ -23,9 +23,9 @@ struct UARTSystemFixture {
 
     UARTSystemFixture() : time_counter(0), axi_clk_period(1000), uart_clk_period(136) {
         dut = new Vuart_top;
-        dut->clk = 0;
+        dut->uart_top__02Eclk = 0;
         dut->uart_clk = 0;
-        dut->rst_n = 0;
+        dut->uart_top__02Erst_n = 0;
 
         // Initialize AXI-Lite signals
         dut->s_axi_awvalid = 0;
@@ -43,10 +43,10 @@ struct UARTSystemFixture {
     }
 
     void tick_axi() {
-        dut->clk = 0;
+        dut->uart_top__02Eclk = 0;
         dut->eval();
         time_counter++;
-        dut->clk = 1;
+        dut->uart_top__02Eclk = 1;
         dut->eval();
         time_counter++;
     }
@@ -80,9 +80,9 @@ struct UARTSystemFixture {
     }
 
     void reset() {
-        dut->rst_n = 0;
+        dut->uart_top__02Erst_n = 0;
         tick_both(10);
-        dut->rst_n = 1;
+        dut->uart_top__02Erst_n = 1;
         tick_both(10);
     }
 

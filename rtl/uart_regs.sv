@@ -220,7 +220,7 @@ module uart_regs #(
                 end
 
                 ADDR_RX_DATA: begin
-                    reg_rdata[7:0] = rx_rd_data_latched;
+                    reg_rdata[7:0] = rx_rd_data_captured;
                 end
 
                 ADDR_BAUD_DIV: begin
@@ -262,24 +262,30 @@ module uart_regs #(
     assign tx_wr_data = reg_wdata[7:0];
 
     // RX FIFO read (on read from RX_DATA register)
-    // Continuously sample data while reading to capture CDC data
-    logic [DATA_WIDTH-1:0] rx_rd_data_latched;
+    // With combinational FIFO read: sample data, then advance pointer next cycle
+    logic [7:0] rx_rd_data_captured;
     logic rx_rd_req;
+    logic rx_rd_en_delayed;
 
     assign rx_rd_req = reg_ren && (reg_addr == ADDR_RX_DATA) && ctrl_rx_en;
 
+    // Capture RX data on read request (data is valid immediately when !empty)
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            rx_rd_data_latched <= '0;
+            rx_rd_data_captured <= '0;
+            rx_rd_en_delayed <= 1'b0;
         end else begin
-            // Continuously sample during read to catch data after it becomes valid
+            // Sample data on read request
             if (rx_rd_req) begin
-                rx_rd_data_latched <= rx_rd_data;
+                rx_rd_data_captured <= rx_rd_data;
             end
+            // Delay rd_en by one cycle to advance pointer AFTER sampling
+            rx_rd_en_delayed <= rx_rd_req;
         end
     end
 
-    assign rx_rd_en = rx_rd_req;
+    // Assert rd_en with delay to advance FIFO pointer after data is captured
+    assign rx_rd_en = rx_rd_en_delayed;
 
     //--------------------------------------------------------------------------
     // Baud Rate Generator Control

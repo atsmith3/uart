@@ -5,8 +5,19 @@
  *   - AXI-Lite slave interface
  *   - Register file
  *   - Baud rate generator
- *   - TX path (FIFO + transmitter)
- *   - RX path (FIFO + receiver)
+ *   - TX path (async FIFO + transmitter)
+ *   - RX path (async FIFO + receiver)
+ *   - Clock Domain Crossing (CDC) synchronizers
+ *
+ * Clock Domains:
+ *   - clk:      AXI-Lite interface and register file (~1 MHz)
+ *   - uart_clk: UART operations (7.3728 MHz for baud generation)
+ *
+ * CDC Handling:
+ *   - TX/RX data: Async FIFOs with Gray code pointers
+ *   - Status signals: Multi-bit/bit synchronizers
+ *   - Control signals: Gray sync (baud_divisor) and pulse sync (resets)
+ *   - Baud enable: Bit synchronizer
  *
  * Parameters:
  *   DATA_WIDTH    - AXI data width (default: 32)
@@ -74,32 +85,41 @@ module uart_top #(
     logic [DATA_WIDTH-1:0]  reg_rdata;
     logic                   reg_error;
 
-    // Baud rate generator
+    // Baud rate generator (clk domain → uart_clk domain)
     logic [7:0]             baud_divisor;
+    logic [7:0]             baud_divisor_sync;
     logic                   baud_enable;
+    logic                   baud_enable_sync;
     logic                   baud_tick;
 
-    // TX path
+    // TX path (clk domain → uart_clk domain for data)
     logic [7:0]             tx_wr_data;
     logic                   tx_wr_en;
-    logic                   tx_empty;
-    logic                   tx_full;
-    logic                   tx_active;
-    logic [3:0]             tx_level;
+    logic                   tx_empty;          // from async FIFO (clk domain)
+    logic                   tx_full;           // from async FIFO (clk domain)
+    logic                   tx_active_uart;    // uart_clk domain
+    logic                   tx_active;         // synchronized to clk domain
+    logic [3:0]             tx_level_uart;     // uart_clk domain
+    logic [3:0]             tx_level;          // synchronized to clk domain
     logic                   tx_fifo_reset;
 
-    // RX path
+    // RX path (uart_clk domain → clk domain for data)
     logic [7:0]             rx_rd_data;
     logic                   rx_rd_en;
-    logic                   rx_empty;
-    logic                   rx_full;
-    logic                   rx_active;
-    logic [3:0]             rx_level;
-    logic                   frame_error;
-    logic                   overrun_error;
+    logic                   rx_empty;          // from async FIFO (clk domain)
+    logic                   rx_full_uart;      // uart_clk domain
+    logic                   rx_full;           // synchronized to clk domain
+    logic                   rx_active_uart;    // uart_clk domain
+    logic                   rx_active;         // synchronized to clk domain
+    logic [3:0]             rx_level_uart;     // uart_clk domain
+    logic [3:0]             rx_level;          // synchronized to clk domain
+    logic                   frame_error_uart;  // uart_clk domain
+    logic                   frame_error;       // synchronized to clk domain
+    logic                   overrun_error_uart;// uart_clk domain
+    logic                   overrun_error;     // synchronized to clk domain
     logic                   rx_fifo_reset;
 
-    // Reset synchronizers for UART clock domain
+    // Reset synchronizers
     logic                   uart_rst_n;
 
     //--------------------------------------------------------------------------
@@ -118,6 +138,93 @@ module uart_top #(
     end
 
     assign uart_rst_n = uart_rst_sync[2];
+
+    //--------------------------------------------------------------------------
+    // CDC - Control Signals (clk → uart_clk)
+    //--------------------------------------------------------------------------
+
+    // Baud divisor: Multi-bit value that changes together → Gray code sync
+    gray_sync #(
+        .DATA_WIDTH (8),
+        .STAGES     (2)
+    ) baud_divisor_sync_inst (
+        .data_in    (baud_divisor),
+        .clk_dst    (uart_clk),
+        .rst_n_dst  (uart_rst_n),
+        .data_out   (baud_divisor_sync)
+    );
+
+    // Baud enable: Single bit → bit synchronizer
+    bit_sync #(
+        .STAGES (2)
+    ) baud_enable_sync_inst (
+        .clk_dst    (uart_clk),
+        .rst_n_dst  (uart_rst_n),
+        .data_in    (baud_enable),
+        .data_out   (baud_enable_sync)
+    );
+
+    //--------------------------------------------------------------------------
+    // CDC - TX Status Signals (uart_clk → clk)
+    //--------------------------------------------------------------------------
+
+    // tx_empty and tx_full come directly from async FIFO (already in clk domain)
+
+    // tx_active: Single bit → bit synchronizer
+    bit_sync #(
+        .STAGES (2)
+    ) tx_active_sync_inst (
+        .clk_dst    (clk),
+        .rst_n_dst  (rst_n),
+        .data_in    (tx_active_uart),
+        .data_out   (tx_active)
+    );
+
+    // tx_level: 4-bit counter → Gray code sync
+    gray_sync #(
+        .DATA_WIDTH (4),
+        .STAGES     (2)
+    ) tx_level_sync_inst (
+        .data_in    (tx_level_uart),
+        .clk_dst    (clk),
+        .rst_n_dst  (rst_n),
+        .data_out   (tx_level)
+    );
+
+    //--------------------------------------------------------------------------
+    // CDC - RX Status Signals (uart_clk → clk)
+    //--------------------------------------------------------------------------
+
+    // rx_empty comes directly from async FIFO (already in clk domain)
+
+    // rx_full, rx_active, frame_error, overrun_error: Independent bits → multi_bit_sync
+    logic [3:0] rx_status_uart;
+    logic [3:0] rx_status_sync;
+
+    assign rx_status_uart = {rx_full_uart, rx_active_uart, frame_error_uart, overrun_error_uart};
+
+    multi_bit_sync #(
+        .DATA_WIDTH (4),
+        .STAGES     (2)
+    ) rx_status_sync_inst (
+        .clk_dst    (clk),
+        .rst_n_dst  (rst_n),
+        .data_in    (rx_status_uart),
+        .data_out   (rx_status_sync)
+    );
+
+    assign {rx_full, rx_active, frame_error, overrun_error} = rx_status_sync;
+
+    // rx_level: 4-bit counter → Gray code sync
+    gray_sync #(
+        .DATA_WIDTH (4),
+        .STAGES     (2)
+    ) rx_level_sync_inst (
+        .data_in    (rx_level_uart),
+        .clk_dst    (clk),
+        .rst_n_dst  (rst_n),
+        .data_out   (rx_level)
+    );
 
     //--------------------------------------------------------------------------
     // AXI-Lite Slave Interface
@@ -166,10 +273,6 @@ module uart_top #(
     // Register File
     //--------------------------------------------------------------------------
 
-    // Note: Register file runs in AXI clock domain
-    // TX/RX interfaces need CDC if clocks are different
-    // For this design, we assume system clock and UART clock are asynchronous
-
     uart_regs #(
         .DATA_WIDTH      (DATA_WIDTH),
         .REG_ADDR_WIDTH  (4)
@@ -186,7 +289,7 @@ module uart_top #(
         .reg_rdata       (reg_rdata),
         .reg_error       (reg_error),
 
-        // TX path (CDC needed)
+        // TX path (synchronized signals)
         .tx_wr_data      (tx_wr_data),
         .tx_wr_en        (tx_wr_en),
         .tx_empty        (tx_empty),
@@ -194,7 +297,7 @@ module uart_top #(
         .tx_active       (tx_active),
         .tx_level        (tx_level),
 
-        // RX path (CDC needed)
+        // RX path (synchronized signals)
         .rx_rd_data      (rx_rd_data),
         .rx_rd_en        (rx_rd_en),
         .rx_empty        (rx_empty),
@@ -225,8 +328,8 @@ module uart_top #(
     ) baud_gen (
         .uart_clk      (uart_clk),
         .rst_n         (uart_rst_n),
-        .baud_divisor  (baud_divisor),
-        .enable        (baud_enable),
+        .baud_divisor  (baud_divisor_sync),
+        .enable        (baud_enable_sync),
         .baud_tick     (baud_tick)
     );
 
@@ -238,22 +341,25 @@ module uart_top #(
         .FIFO_DEPTH (TX_FIFO_DEPTH),
         .DATA_WIDTH (8)
     ) tx_path (
-        .uart_clk      (uart_clk),
-        .rst_n         (uart_rst_n),
-        .baud_tick     (baud_tick),
-
-        // FIFO write interface (from registers - CDC needed)
+        // Write clock domain (from registers)
+        .wr_clk        (clk),
+        .wr_rst_n      (rst_n),
         .wr_data       (tx_wr_data),
         .wr_en         (tx_wr_en),
+        .wr_full       (tx_full),
+
+        // UART clock domain
+        .uart_clk      (uart_clk),
+        .uart_rst_n    (uart_rst_n),
+        .baud_tick     (baud_tick),
 
         // Serial output
         .tx_serial     (uart_tx),
 
-        // Status (to registers - CDC needed)
+        // Status (in uart_clk domain)
         .tx_empty      (tx_empty),
-        .tx_full       (tx_full),
-        .tx_active     (tx_active),
-        .tx_level      (tx_level),
+        .tx_active     (tx_active_uart),
+        .tx_level      (tx_level_uart),
 
         // Control
         .fifo_reset    (tx_fifo_reset)
@@ -267,51 +373,30 @@ module uart_top #(
         .FIFO_DEPTH (RX_FIFO_DEPTH),
         .DATA_WIDTH (8)
     ) rx_path (
+        // UART clock domain
         .uart_clk       (uart_clk),
-        .rst_n          (uart_rst_n),
+        .uart_rst_n     (uart_rst_n),
         .sample_tick    (baud_tick),
 
         // Serial input
         .rx_serial      (uart_rx),
 
-        // FIFO read interface (to registers - CDC needed)
+        // Read clock domain (to registers)
+        .rd_clk         (clk),
+        .rd_rst_n       (rst_n),
         .rd_data        (rx_rd_data),
         .rd_en          (rx_rd_en),
+        .rd_empty       (rx_empty),
 
-        // Status (to registers - CDC needed)
-        .rx_empty       (rx_empty),
-        .rx_full        (rx_full),
-        .rx_active      (rx_active),
-        .rx_level       (rx_level),
-        .frame_error    (frame_error),
-        .overrun_error  (overrun_error),
+        // Status (in uart_clk domain)
+        .rx_full        (rx_full_uart),
+        .rx_active      (rx_active_uart),
+        .rx_level       (rx_level_uart),
+        .frame_error    (frame_error_uart),
+        .overrun_error  (overrun_error_uart),
 
         // Control
         .fifo_reset     (rx_fifo_reset)
     );
-
-    //--------------------------------------------------------------------------
-    // Notes on Clock Domain Crossing
-    //--------------------------------------------------------------------------
-
-    // WARNING: This design has CDC issues that need to be addressed for production use:
-    //
-    // 1. Register writes (tx_wr_en, tx_wr_data, tx_fifo_reset, rx_fifo_reset, baud_divisor)
-    //    cross from 'clk' domain to 'uart_clk' domain
-    //
-    // 2. Register reads (tx_empty, tx_full, rx_rd_data, rx_empty, etc.) cross from
-    //    'uart_clk' domain to 'clk' domain
-    //
-    // For a production design, these should use proper CDC techniques:
-    //    - Handshake protocols for control signals
-    //    - Async FIFOs for data paths
-    //    - Gray code synchronizers for counters
-    //
-    // For this initial implementation, we're assuming that:
-    //    - The clock domains are synchronous OR
-    //    - The timing is slow enough that metastability is unlikely OR
-    //    - This will be addressed in a future revision
-    //
-    // TODO: Add proper CDC infrastructure
 
 endmodule
