@@ -84,12 +84,12 @@ struct AsyncFIFOFixture {
     }
 
     uint8_t read_byte() {
-        // With combinational read, rd_data is valid when !rd_empty
-        // Sample data first, then assert rd_en to advance pointer
-        uint8_t data = dut->rd_data;
+        // With registered read, rd_data is valid 1 cycle after rd_en
+        // Assert rd_en, tick, then sample data
         dut->rd_en = 1;
         tick_rd();
         dut->rd_en = 0;
+        uint8_t data = dut->rd_data;
         return data;
     }
 };

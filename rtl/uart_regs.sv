@@ -220,7 +220,7 @@ module uart_regs #(
                 end
 
                 ADDR_RX_DATA: begin
-                    reg_rdata[7:0] = rx_rd_data_captured;
+                    reg_rdata[7:0] = rx_holding_reg;
                 end
 
                 ADDR_BAUD_DIV: begin
@@ -262,30 +262,58 @@ module uart_regs #(
     assign tx_wr_data = reg_wdata[7:0];
 
     // RX FIFO read (on read from RX_DATA register)
-    // With combinational FIFO read: sample data, then advance pointer next cycle
-    logic [7:0] rx_rd_data_captured;
+    // FIFO has registered output: rd_data valid 1 cycle after rd_en
+    // Use holding register: prefetch from FIFO so data is always ready
+    logic [7:0] rx_holding_reg;
+    logic rx_holding_valid;
     logic rx_rd_req;
-    logic rx_rd_en_delayed;
+    logic rx_rd_en_reg;
 
     assign rx_rd_req = reg_ren && (reg_addr == ADDR_RX_DATA) && ctrl_rx_en;
 
-    // Capture RX data on read request (data is valid immediately when !empty)
+    // synthesis translate_off
+    always @(negedge rx_empty) begin
+        $display("[uart_regs] t=%0t rx_empty went LOW (data available)", $time);
+    end
+    // synthesis translate_on
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            rx_rd_data_captured <= '0;
-            rx_rd_en_delayed <= 1'b0;
+            rx_holding_reg <= '0;
+            rx_holding_valid <= 1'b0;
+            rx_rd_en_reg <= 1'b0;
         end else begin
-            // Sample data on read request
-            if (rx_rd_req) begin
-                rx_rd_data_captured <= rx_rd_data;
+            // Previous cycle's rd_en means data is now valid
+            if (rx_rd_en_reg) begin
+                rx_holding_reg <= rx_rd_data;
+                rx_holding_valid <= 1'b1;
+                rx_rd_en_reg <= 1'b0;
+                // synthesis translate_off
+                $display("[uart_regs] t=%0t Captured rx_rd_data=0x%h into holding_reg (valid=%b)", $time, rx_rd_data, 1'b1);
+                // synthesis translate_on
             end
-            // Delay rd_en by one cycle to advance pointer AFTER sampling
-            rx_rd_en_delayed <= rx_rd_req;
+
+            // After a register read, mark holding register as consumed
+            if (rx_rd_req && rx_holding_valid) begin
+                rx_holding_valid <= 1'b0;
+                // synthesis translate_off
+                $display("[uart_regs] t=%0t Register read consumed holding_reg=0x%h (valid now=%b)", $time, rx_holding_reg, 1'b0);
+                // synthesis translate_on
+            end
+
+            // Start fetch when holding invalid and FIFO has data
+            if (!rx_holding_valid && !rx_empty && ctrl_rx_en && !rx_rd_en_reg) begin
+                rx_rd_en_reg <= 1'b1;
+                // synthesis translate_off
+                $display("[uart_regs] t=%0t Starting FIFO fetch (rx_empty=%b, valid=%b, ctrl_rx_en=%b)",
+                         $time, rx_empty, rx_holding_valid, ctrl_rx_en);
+                // synthesis translate_on
+            end
         end
     end
 
-    // Assert rd_en with delay to advance FIFO pointer after data is captured
-    assign rx_rd_en = rx_rd_en_delayed;
+    // Assert rd_en for one cycle to start fetch
+    assign rx_rd_en = rx_rd_en_reg;
 
     //--------------------------------------------------------------------------
     // Baud Rate Generator Control

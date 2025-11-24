@@ -180,10 +180,15 @@ module async_fifo #(
     assign rd_almost_empty = (rd_ptr_next == wr_ptr_sync) ||
                              (rd_ptr_next2 == wr_ptr_sync);
 
-    // Read from memory (combinational output for zero-latency reads)
-    // rd_data always shows data at CURRENT rd_ptr, valid immediately when !rd_empty
-    // When rd_en asserted, rd_ptr advances but rd_data updates to show new location
-    assign rd_data = mem[rd_ptr[ADDR_WIDTH-1:0]];
+    // Read from memory (registered output - standard FIFO behavior)
+    // rd_data updates one cycle after rd_en is asserted
+    always_ff @(posedge rd_clk or negedge rd_rst_n) begin
+        if (!rd_rst_n) begin
+            rd_data <= '0;
+        end else if (rd_en && !rd_empty) begin
+            rd_data <= mem[rd_ptr[ADDR_WIDTH-1:0]];
+        end
+    end
 
     //--------------------------------------------------------------------------
     // Assertions
