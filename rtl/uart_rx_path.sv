@@ -47,11 +47,25 @@ module uart_rx_path #(
 
     // FIFO signals
     logic                  fifo_wr_en;
+    logic                  fifo_rd_en_internal;
+    logic                  rd_en_prev;
     logic                  fifo_full;
     logic                  fifo_empty;
 
     // Overrun error (sticky)
     logic                  overrun_error_reg;
+
+    // Edge detector for rd_en to prevent multiple reads
+    // rd_en comes from clk domain, need to prevent multiple pops in uart_clk domain
+    always_ff @(posedge uart_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_en_prev <= 1'b0;
+        end else begin
+            rd_en_prev <= rd_en;
+        end
+    end
+
+    assign fifo_rd_en_internal = rd_en && !rd_en_prev;
 
     // Bit synchronizer for RX input
     bit_sync #(
@@ -90,7 +104,7 @@ module uart_rx_path #(
         .wr_data     (rx_data_core),
         .full        (fifo_full),
         .almost_full (),
-        .rd_en       (rd_en),
+        .rd_en       (fifo_rd_en_internal),
         .rd_data     (rd_data),
         .empty       (fifo_empty),
         .almost_empty(),

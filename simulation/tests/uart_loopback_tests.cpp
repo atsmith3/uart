@@ -66,11 +66,16 @@ struct UARTSystemFixture {
     // Run both clocks for a period
     void tick_both(int count = 1) {
         for (int i = 0; i < count; i++) {
+            // Interleave clocks: tick UART first to allow CDC signals to propagate
             // Tick UART clock more frequently (7.3728 MHz vs 1 MHz)
             for (int j = 0; j < 8; j++) {
                 tick_uart();
             }
             tick_axi();
+            // Tick UART a few more times after AXI to allow response to propagate back
+            for (int j = 0; j < 4; j++) {
+                tick_uart();
+            }
         }
     }
 
@@ -89,20 +94,20 @@ struct UARTSystemFixture {
         dut->s_axi_wstrb = 0xF;
         dut->s_axi_wvalid = 1;
 
-        // Wait for ready
+        // Wait for ready (tick both clocks for CDC)
         while (!dut->s_axi_awready || !dut->s_axi_wready) {
-            tick_axi();
+            tick_both();
         }
-        tick_axi();
+        tick_both();
 
         dut->s_axi_awvalid = 0;
         dut->s_axi_wvalid = 0;
 
-        // Wait for response
+        // Wait for response (tick both clocks for CDC)
         while (!dut->s_axi_bvalid) {
-            tick_axi();
+            tick_both();
         }
-        tick_axi();
+        tick_both();
     }
 
     // AXI-Lite read transaction
@@ -110,20 +115,20 @@ struct UARTSystemFixture {
         dut->s_axi_araddr = addr;
         dut->s_axi_arvalid = 1;
 
-        // Wait for ready
+        // Wait for ready (tick both clocks for CDC)
         while (!dut->s_axi_arready) {
-            tick_axi();
+            tick_both();
         }
-        tick_axi();
+        tick_both();
 
         dut->s_axi_arvalid = 0;
 
-        // Wait for response
+        // Wait for response (tick both clocks for CDC)
         while (!dut->s_axi_rvalid) {
-            tick_axi();
+            tick_both();
         }
         uint32_t data = dut->s_axi_rdata;
-        tick_axi();
+        tick_both();
 
         return data;
     }
@@ -152,7 +157,9 @@ struct UARTSystemFixture {
 
     // Receive byte via UART
     uint8_t uart_receive() {
-        return axi_read(reg::RX_DATA) & 0xFF;
+        uint32_t data = axi_read(reg::RX_DATA);
+        std::cout << "RX_DATA register read: 0x" << std::hex << data << std::dec << std::endl;
+        return data & 0xFF;
     }
 
     // Get status register

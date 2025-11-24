@@ -82,6 +82,7 @@ module sync_fifo #(
             // Check for underflow
             if (rd_en && empty) begin
                 $error("sync_fifo: Read from empty FIFO!");
+                $stop;
             end
         end
     end

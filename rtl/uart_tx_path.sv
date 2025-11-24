@@ -37,12 +37,26 @@ module uart_tx_path #(
     // FIFO signals
     logic [DATA_WIDTH-1:0] fifo_rd_data;
     logic                  fifo_rd_en;
+    logic                  fifo_wr_en_internal;
+    logic                  wr_en_prev;
     logic                  fifo_empty;
     logic                  fifo_full;
 
     // TX core signals
     logic                  tx_valid;
     logic                  tx_ready;
+
+    // Edge detector for wr_en to prevent multiple writes
+    // wr_en comes from clk domain, need to prevent multiple pushes in uart_clk domain
+    always_ff @(posedge uart_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_en_prev <= 1'b0;
+        end else begin
+            wr_en_prev <= wr_en;
+        end
+    end
+
+    assign fifo_wr_en_internal = wr_en && !wr_en_prev;
 
     // TX FIFO
     sync_fifo #(
@@ -51,7 +65,7 @@ module uart_tx_path #(
     ) tx_fifo (
         .clk         (uart_clk),
         .rst_n       (rst_n && !fifo_reset),
-        .wr_en       (wr_en),
+        .wr_en       (fifo_wr_en_internal),
         .wr_data     (wr_data),
         .full        (fifo_full),
         .almost_full (),

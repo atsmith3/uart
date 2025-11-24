@@ -212,6 +212,7 @@ module axi_lite_slave_if #(
     assign rresp = rd_error_reg ? RESP_SLVERR : RESP_OKAY;
 
     // Register read interface
-    assign reg_ren = (rd_state == R_IDLE && arvalid) || (rd_state == R_READ);
+    // Only assert during R_READ state when data is sampled
+    assign reg_ren = (rd_state == R_READ);
 
 endmodule
