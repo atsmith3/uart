@@ -345,8 +345,12 @@ module uart_regs #(
         end
     end
 
-    // Assert rd_en when entering FETCHING state
-    assign rx_rd_en = (rx_state == RX_IDLE) && !rx_empty && ctrl_rx_en;
+    // Assert rd_en when entering FETCHING state (from either IDLE or READY)
+    // Need to check next state transition, not just current state
+    logic rx_entering_fetching;
+    assign rx_entering_fetching = ((rx_state == RX_IDLE) && !rx_empty && ctrl_rx_en) ||
+                                   ((rx_state == RX_READY) && reg_ren && (reg_addr == ADDR_RX_DATA) && ctrl_rx_en && !rx_empty);
+    assign rx_rd_en = rx_entering_fetching;
 
     //--------------------------------------------------------------------------
     // Baud Rate Generator Control

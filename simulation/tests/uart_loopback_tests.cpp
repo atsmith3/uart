@@ -6,6 +6,7 @@
 
 #include "Vuart_top.h"
 #include "test_utils.h"
+#include "clock_driver.h"
 #include <boost/test/unit_test.hpp>
 #include <verilated.h>
 #include <iostream>
@@ -17,14 +18,17 @@ BOOST_AUTO_TEST_SUITE(UART_System_Loopback_Tests)
 // Test fixture for system-level tests
 struct UARTSystemFixture {
     Vuart_top* dut;
-    uint64_t time_counter;
-    uint64_t axi_clk_period;   // 1 MHz = 1000 ns
-    uint64_t uart_clk_period;  // 7.3728 MHz = 135.6 ns
+    uint64_t sim_time;  // Simulation time in nanoseconds
+    ClockDriver* uart_clk_driver;
+    ClockDriver* axi_clk_driver;
 
-    UARTSystemFixture() : time_counter(0), axi_clk_period(1000), uart_clk_period(136) {
+    UARTSystemFixture() : sim_time(0) {
         dut = new Vuart_top;
-        dut->uart_top__02Eclk = 0;
-        dut->uart_clk = 0;
+
+        // Create clock drivers: 8 MHz UART, 1 MHz AXI (8:1 ratio)
+        uart_clk_driver = new ClockDriver(&dut->uart_clk, 8000000);   // 8 MHz
+        axi_clk_driver = new ClockDriver(&dut->uart_top__02Eclk, 1000000);  // 1 MHz
+
         dut->uart_top__02Erst_n = 0;
 
         // Initialize AXI-Lite signals
@@ -39,43 +43,32 @@ struct UARTSystemFixture {
     }
 
     ~UARTSystemFixture() {
+        delete uart_clk_driver;
+        delete axi_clk_driver;
         delete dut;
     }
 
-    void tick_axi() {
-        dut->uart_top__02Eclk = 0;
+    // Advance simulation by 1 nanosecond, updating all clocks
+    void tick() {
+        uart_clk_driver->update(sim_time);
+        axi_clk_driver->update(sim_time);
         dut->eval();
-        time_counter++;
-        dut->uart_top__02Eclk = 1;
-        dut->eval();
-        time_counter++;
-    }
 
-    void tick_uart() {
-        dut->uart_clk = 0;
-        dut->eval();
-        time_counter++;
-        dut->uart_clk = 1;
-        dut->eval();
-        time_counter++;
-
-        // Loopback connection
+        // Loopback connection (updated every tick)
         dut->uart_rx = dut->uart_tx;
+
+        sim_time++;
     }
 
-    // Run both clocks for a period
-    void tick_both(int count = 1) {
-        for (int i = 0; i < count; i++) {
-            // Interleave clocks: tick UART first to allow CDC signals to propagate
-            // Tick UART clock more frequently (7.3728 MHz vs 1 MHz)
-            for (int j = 0; j < 8; j++) {
-                tick_uart();
-            }
-            tick_axi();
-            // Tick UART a few more times after AXI to allow response to propagate back
-            for (int j = 0; j < 4; j++) {
-                tick_uart();
-            }
+    // Run simulation for specified number of AXI clock periods
+    // This replaces tick_both() with time-accurate simulation
+    void tick_both(int axi_periods = 1) {
+        // 1 AXI period = 1000 ns at 1 MHz
+        uint64_t duration_ns = axi_periods * 1000;
+        uint64_t end_time = sim_time + duration_ns;
+
+        while (sim_time < end_time) {
+            tick();
         }
     }
 

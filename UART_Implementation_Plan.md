@@ -4,6 +4,8 @@
 
 A bidirectional UART peripheral soft IP with AXI-Lite interface for integration into system bus/NoC architectures. Features register-based control, configurable baud rates, and comprehensive verification with Verilator.
 
+**IMPORTANT:** This implementation plan follows strict development guidelines to ensure quality and maintainability. See `DEVELOPMENT_GUIDELINES.md` for detailed process requirements.
+
 ### Architecture Summary
 
 - **Protocol:** UART 8N1 (8 data bits, no parity, 1 stop bit)
@@ -35,9 +37,108 @@ A bidirectional UART peripheral soft IP with AXI-Lite interface for integration 
 
 ---
 
+## Development Process Overview
+
+### Five Golden Rules
+
+1. **Test Before You Integrate** - Every module must pass standalone tests before integration
+2. **One Change at a Time** - Make orthogonal changes in separate commits
+3. **Know Your Baseline** - Always maintain known-good states with git tags
+4. **Validate Don't Patch** - Tests validate requirements, not implementation
+5. **Test Your Tests** - Clock generators and test infrastructure must be validated
+
+### Phase Gates (MANDATORY)
+
+Each phase has **entrance criteria** (what must be complete before starting) and **exit criteria** (what must pass before proceeding). Cannot skip phases or bypass gates.
+
+**Gate enforcement:**
+- Module validation: All module tests must pass before integration
+- Integration validation: Integration tests + all previous tests must pass
+- No architectural changes without design review
+- All changes tracked with git tags for rollback
+
+### Git Tagging Strategy
+
+Required tags at each milestone:
+```bash
+# Design phase
+git tag -a design_review_approved -m "Interface specifications approved"
+
+# Module development
+git tag -a <module>_validated -m "<Module> tests passing"
+
+# Integration
+git tag -a <subsystem>_integration_pass -m "<Subsystem> integrated and validated"
+
+# System validation
+git tag -a system_validated -m "Full system tests passing"
+```
+
+### Test-First Development
+
+**Process for each module:**
+1. Write interface specification (signals, timing, protocol)
+2. Write failing test cases
+3. Implement module to pass tests
+4. Validate and tag as `<module>_validated`
+5. Only then proceed to integration
+
+---
+
+## Phase 0: Design Review (MANDATORY GATE)
+
+### Entrance Criteria
+- Project requirements documented
+- Block diagram complete
+- Interface specifications drafted
+
+### Activities
+1. **Define all module interfaces** (see DEVELOPMENT_GUIDELINES.md)
+   - Signal tables with clock domains
+   - Timing diagrams for complex handshakes
+   - Protocol descriptions (ready/valid, FIFO, etc.)
+   - CDC boundaries identified
+
+2. **Document clock architecture**
+   - UART clock domain (7.3728 MHz)
+   - System clock domain (~1 MHz)
+   - CDC synchronization strategy
+
+3. **Review and approve design**
+   - Design review meeting
+   - Interface specifications approved
+   - Risk assessment complete
+
+### Exit Criteria
+- [ ] All module interfaces fully documented
+- [ ] Clock domains and CDC boundaries identified
+- [ ] Timing requirements documented
+- [ ] Design review sign-off obtained
+- [ ] **Git tag:** `design_review_approved`
+
+### Deliverables
+- Interface specification document
+- Block diagram
+- CDC analysis
+- This implementation plan
+
+---
+
 ## Phase 1: Clock Domain Crossing and FIFO Primitives
 
+**Entrance Criteria:**
+- [ ] Design review complete (tag: `design_review_approved`)
+- [ ] Test infrastructure plan approved
+- [ ] Development environment setup
+
 ### Step 1.1: Bit Synchronizer (`rtl/bit_sync.sv`)
+
+**Development Process:**
+1. Write interface specification
+2. Create `tests/module/bit_sync_test.cpp` with test cases
+3. Implement `rtl/bit_sync.sv`
+4. Run tests until passing
+5. Tag: `bit_sync_validated`
 
 **Purpose:** Safely synchronize single-bit signals across clock domains.
 
@@ -68,6 +169,13 @@ A bidirectional UART peripheral soft IP with AXI-Lite interface for integration 
 ---
 
 ### Step 1.2: Synchronous FIFO (`rtl/sync_fifo.sv`)
+
+**Development Process:**
+1. Write interface specification (see Interface Definition Requirements in DEVELOPMENT_GUIDELINES.md)
+2. Create `tests/module/sync_fifo_test.cpp` - comprehensive corner case testing
+3. Implement `rtl/sync_fifo.sv`
+4. Run tests until passing (100% pass rate required)
+5. Tag: `sync_fifo_validated`
 
 **Purpose:** Buffer data within a single clock domain with read/write pointers.
 
@@ -115,9 +223,35 @@ A bidirectional UART peripheral soft IP with AXI-Lite interface for integration 
 
 ---
 
+### Phase 1 Exit Criteria (GATE)
+
+**Exit Criteria:**
+- [ ] bit_sync module tests 100% passing
+- [ ] sync_fifo module tests 100% passing
+- [ ] Code review complete for both modules
+- [ ] No lint warnings
+- [ ] Git tags created: `bit_sync_validated`, `sync_fifo_validated`
+- [ ] **Phase tag:** `phase1_primitives_complete`
+
+**Checkpoint:** Do NOT proceed to Phase 2 until all exit criteria met. These primitives are foundational - errors here cascade through entire design.
+
+---
+
 ## Phase 2: UART Transmitter
 
+**Entrance Criteria:**
+- [ ] Phase 1 complete (tag: `phase1_primitives_complete`)
+- [ ] Test infrastructure for UART protocol validation ready
+
 ### Step 2.1: Baud Rate Generator (`rtl/uart_baud_gen.sv`)
+
+**Development Process:**
+1. Write interface specification
+2. Create `tests/module/baud_gen_test.cpp` with frequency validation tests
+3. **IMPORTANT:** Validate test infrastructure (clock measurement accuracy) before testing DUT
+4. Implement `rtl/uart_baud_gen.sv`
+5. Run tests until passing
+6. Tag: `baud_gen_validated`
 
 **Purpose:** Generate baud rate clock enable from system clock.
 
@@ -186,6 +320,13 @@ baud_divisor = 7372800 / (9600 × 16) = 7372800 / 153600 = 48
 
 ### Step 2.2: UART Transmitter Core (`rtl/uart_tx.sv`)
 
+**Development Process:**
+1. Write interface specification with timing diagrams
+2. Create `tests/module/uart_tx_test.cpp` - test frame format (start, data LSB-first, stop)
+3. Implement `rtl/uart_tx.sv`
+4. Run tests until passing (verify correct bit timing!)
+5. Tag: `uart_tx_validated`
+
 **Purpose:** Serialize and transmit data over UART TX line.
 
 **Implementation Details:**
@@ -250,6 +391,16 @@ STOP: Transmit stop bit (HIGH)
 
 ### Step 2.3: UART TX Path Integration (`rtl/uart_tx_path.sv`)
 
+**Development Process - INTEGRATION:**
+1. **Prerequisites:** `sync_fifo_validated`, `uart_tx_validated`, `baud_gen_validated` tags must exist
+2. Create integration test: `tests/integration/uart_tx_path_test.cpp`
+3. Integrate ONLY sync_fifo + uart_tx (one component at a time)
+4. Implement `rtl/uart_tx_path.sv`
+5. Run integration tests + regression (all module tests must still pass)
+6. Tag: `uart_tx_path_integrated`
+
+**IMPORTANT:** This is first integration point. If issues arise, can rollback to individual module tags.
+
 **Purpose:** Integrate TX FIFO with transmitter for buffered transmission.
 
 **Implementation Details:**
@@ -289,9 +440,39 @@ AXI Write → TX FIFO → UART TX Core → tx_serial
 
 ---
 
+### Phase 2 Exit Criteria (GATE)
+
+**Exit Criteria:**
+- [ ] baud_gen module tests 100% passing (tag: `baud_gen_validated`)
+- [ ] uart_tx module tests 100% passing (tag: `uart_tx_validated`)
+- [ ] uart_tx_path integration tests passing (tag: `uart_tx_path_integrated`)
+- [ ] All Phase 1 tests still passing (regression check)
+- [ ] Code review complete
+- [ ] No lint warnings
+- [ ] **Phase tag:** `phase2_tx_complete`
+
+**Checkpoint:** TX path must be fully validated before starting RX. RX is more complex (oversampling, error detection) - don't carry TX issues forward.
+
+---
+
 ## Phase 3: UART Receiver
 
+**Entrance Criteria:**
+- [ ] Phase 2 complete (tag: `phase2_tx_complete`)
+- [ ] Understand timing requirements for 16× oversampling
+
 ### Step 3.1: UART Receiver Core (`rtl/uart_rx.sv`)
+
+**Development Process:**
+1. Write interface specification with detailed timing analysis
+2. **Draw timing diagrams** for start bit detection and data sampling
+3. Create `tests/module/uart_rx_test.cpp` - test frame reception and error detection
+4. Implement `rtl/uart_rx.sv`
+5. **CRITICAL:** Verify sample counter initialization and bit-center sampling
+6. Run tests until passing
+7. Tag: `uart_rx_validated`
+
+**NOTE:** RX is more complex than TX (oversampling, error detection). Take time to get timing right.
 
 **Purpose:** Deserialize and receive data from UART RX line with error detection.
 
@@ -357,6 +538,17 @@ STOP_BIT: Validate stop bit
 
 ### Step 3.2: UART RX Path Integration (`rtl/uart_rx_path.sv`)
 
+**Development Process - INTEGRATION:**
+1. **Prerequisites:** `bit_sync_validated`, `sync_fifo_validated`, `uart_rx_validated` tags must exist
+2. Create integration test: `tests/integration/uart_rx_path_test.cpp`
+3. Integrate bit_sync → uart_rx → sync_fifo
+4. Implement `rtl/uart_rx_path.sv`
+5. **CRITICAL:** Handle rx_valid handshaking carefully to avoid duplicate FIFO writes
+6. Run integration tests + regression
+7. Tag: `uart_rx_path_integrated`
+
+**IMPORTANT:** RX has handshaking complexity. Test single-byte and multi-byte reception thoroughly.
+
 **Purpose:** Integrate RX core with FIFO for buffered reception.
 
 **Implementation Details:**
@@ -399,9 +591,35 @@ rx_serial → UART RX Core → RX FIFO → AXI Read
 
 ---
 
+### Phase 3 Exit Criteria (GATE)
+
+**Exit Criteria:**
+- [ ] uart_rx module tests 100% passing (tag: `uart_rx_validated`)
+- [ ] uart_rx_path integration tests passing (tag: `uart_rx_path_integrated`)
+- [ ] All Phase 1 & 2 tests still passing (regression check)
+- [ ] Code review complete
+- [ ] No lint warnings
+- [ ] **Phase tag:** `phase3_rx_complete`
+
+**Checkpoint:** Both TX and RX paths validated independently. Ready for register interface integration.
+
+---
+
 ## Phase 4: AXI-Lite Register Interface
 
+**Entrance Criteria:**
+- [ ] Phase 3 complete (tag: `phase3_rx_complete`)
+- [ ] AXI-Lite protocol understood
+- [ ] Register map designed
+
 ### Step 4.1: AXI-Lite Slave Interface (`rtl/axi_lite_slave_if.sv`)
+
+**Development Process:**
+1. Write interface specification for AXI-Lite protocol
+2. Create `tests/module/axi_slave_if_test.cpp` - test all AXI transactions
+3. Implement `rtl/axi_lite_slave_if.sv`
+4. Test write/read transactions, backpressure, invalid addresses
+5. Tag: `axi_slave_if_validated`
 
 **Purpose:** Implement AXI-Lite slave protocol for register access.
 
@@ -477,6 +695,14 @@ WAIT_RREADY: Wait for rready
 ---
 
 ### Step 4.2: UART Register File (`rtl/uart_regs.sv`)
+
+**Development Process:**
+1. Document complete register map (see below)
+2. Create `tests/module/uart_regs_test.cpp` - test all register operations
+3. Implement `rtl/uart_regs.sv`
+4. Test read/write, W1C behavior, FIFO side effects, reserved bits
+5. **CRITICAL:** If using async FIFOs, implement prefetch logic correctly
+6. Tag: `uart_regs_validated`
 
 **Purpose:** Define and implement UART control/status registers.
 
@@ -603,9 +829,40 @@ Bit  | Field         | Description
 
 ---
 
+### Phase 4 Exit Criteria (GATE)
+
+**Exit Criteria:**
+- [ ] axi_slave_if module tests 100% passing (tag: `axi_slave_if_validated`)
+- [ ] uart_regs module tests 100% passing (tag: `uart_regs_validated`)
+- [ ] All previous phase tests still passing (regression check)
+- [ ] Code review complete
+- [ ] No lint warnings
+- [ ] **Phase tag:** `phase4_registers_complete`
+
+**Checkpoint:** Register interface validated. Ready for top-level integration.
+
+---
+
 ## Phase 5: Top-Level Integration
 
+**Entrance Criteria:**
+- [ ] Phase 4 complete (tag: `phase4_registers_complete`)
+- [ ] All module tags exist and validated
+- [ ] CDC strategy documented
+
 ### Step 5.1: UART Top Module (`rtl/uart_top.sv`)
+
+**Development Process - TOP-LEVEL INTEGRATION:**
+1. **Prerequisites:** All Phase 1-4 module tags must exist
+2. Create system tests: `tests/uart_loopback_tests.cpp`
+3. **Validate test infrastructure first:** Clock generators, timing accuracy
+4. Integrate all components into `rtl/uart_top.sv`
+5. **CRITICAL CDC checkpoint:** Verify all clock domain crossings safe
+6. Run system tests (loopback at multiple baud rates)
+7. Run full regression (all module + integration tests)
+8. Tag: `uart_top_integrated`
+
+**IMPORTANT:** This is the big integration. Take time, test thoroughly. If issues arise, have clear rollback path.
 
 **Purpose:** Integrate all UART components with AXI-Lite interface.
 
@@ -681,7 +938,27 @@ Bit  | Field         | Description
 
 ---
 
-## Phase 6: Verification Infrastructure
+### Phase 5 Exit Criteria (GATE)
+
+**Exit Criteria:**
+- [ ] uart_top integration complete (tag: `uart_top_integrated`)
+- [ ] Loopback tests passing at all supported baud rates
+- [ ] End-to-end TX/RX tests passing
+- [ ] Full regression passing (all module + integration tests)
+- [ ] CDC verification complete
+- [ ] Code review complete
+- [ ] No lint warnings
+- [ ] **Phase tag:** `phase5_system_integrated`
+
+**Checkpoint:** System integration complete. Ready for comprehensive verification.
+
+---
+
+## Phase 6: Verification and Validation
+
+**Entrance Criteria:**
+- [ ] Phase 5 complete (tag: `phase5_system_integrated`)
+- [ ] Test infrastructure validated
 
 ### Step 6.1: C++ Test Infrastructure
 
@@ -1460,3 +1737,69 @@ int uart_getc(uint32_t base_addr, uint8_t *data) {
     return 0;
 }
 ```
+
+---
+
+## Recovery Procedures and Troubleshooting
+
+### When Tests Start Failing
+
+**DO NOT:**
+- Try to fix multiple failures simultaneously
+- Patch tests to make them pass
+- Keep making changes hoping something works
+- Skip running regression tests
+
+**DO:**
+1. **Identify last known-good state:**
+   ```bash
+   git tag  # Find last validated tag
+   git log --oneline --decorate
+   ```
+
+2. **Rollback to baseline:**
+   ```bash
+   git reset --hard <last-known-good-tag>
+   # Verify tests pass at baseline
+   ./build/module_tests
+   ./build/system_tests
+   ```
+
+3. **Incremental re-integration:**
+   - Reapply changes one at a time
+   - Test after each change
+   - Tag successful states
+   - Stop and debug at first failure
+
+### Architectural Change Process
+
+If making architectural changes (e.g., sync_fifo → async_fifo):
+
+1. **Create design document:** `docs/arch_change_<name>.md`
+2. **Get approval** before implementation
+3. **Create rollback point:** `git tag -a before_<change>`
+4. **Validate new component in isolation** before integration
+5. **Incremental integration** with testing at each step
+
+### Common Issues and Solutions
+
+**Issue: Module tests pass but integration fails**
+- **Cause:** Interface mismatch or timing assumption
+- **Solution:** Check interface specifications, verify clock domains
+
+**Issue: Single byte works but multi-byte fails**
+- **Cause:** Handshaking issue, prefetch logic, duplicate writes
+- **Solution:** Check FSM state transitions, FIFO read/write logic
+
+**Issue: Random failures or timing-dependent bugs**
+- **Cause:** CDC issues, metastability, race conditions
+- **Solution:** Review CDC synchronization, add constraints
+
+### For Detailed Recovery Procedures
+
+See `DEVELOPMENT_GUIDELINES.md` for:
+- Complete recovery decision tree
+- Phase gate enforcement procedures
+- Test infrastructure validation
+- Hardware-specific debugging checklist
+- Project-specific learnings from UART development

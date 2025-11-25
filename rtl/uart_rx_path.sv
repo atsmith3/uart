@@ -59,8 +59,11 @@ module uart_rx_path #(
     // Overrun error (sticky)
     logic                  overrun_error_reg;
 
-    // Note: fifo_reset input is ignored - async FIFO uses rst_n signals directly
-    // SW can clear FIFO by disabling/re-enabling RX in the control register
+    // Track if we've written current rx_data to avoid duplicate writes
+    logic                  rx_data_written;
+
+    // fifo_reset provides software control to clear FIFO pointers
+    // Connected to async FIFO's rd_clear input for synchronous reset
 
     //--------------------------------------------------------------------------
     // Bit Synchronizer for RX Input
@@ -105,6 +108,7 @@ module uart_rx_path #(
         // Write interface (uart_clk domain)
         .wr_clk         (uart_clk),
         .wr_rst_n       (uart_rst_n),
+        .wr_clear       (1'b0),         // No clear on write side for RX FIFO
         .wr_en          (fifo_wr_en),
         .wr_data        (rx_data_core),
         .wr_full        (fifo_wr_full),
@@ -113,6 +117,7 @@ module uart_rx_path #(
         // Read interface (rd_clk domain)
         .rd_clk         (rd_clk),
         .rd_rst_n       (rd_rst_n),
+        .rd_clear       (fifo_reset),   // Software FIFO clear
         .rd_en          (rd_en),
         .rd_data        (rd_data),
         .rd_empty       (rd_empty),
@@ -123,8 +128,23 @@ module uart_rx_path #(
     // Control Logic
     //--------------------------------------------------------------------------
 
-    // Write to FIFO when RX core has valid data
-    assign fifo_wr_en = rx_valid_core && !fifo_wr_full;
+    // Track when we've written data to avoid duplicates
+    always_ff @(posedge uart_clk or negedge uart_rst_n) begin
+        if (!uart_rst_n) begin
+            rx_data_written <= 1'b0;
+        end else begin
+            if (rx_valid_core && !rx_data_written && !fifo_wr_full) begin
+                // Just wrote data
+                rx_data_written <= 1'b1;
+            end else if (!rx_valid_core) begin
+                // rx_valid deasserted, ready for next byte
+                rx_data_written <= 1'b0;
+            end
+        end
+    end
+
+    // Write to FIFO only once per valid assertion
+    assign fifo_wr_en = rx_valid_core && !rx_data_written && !fifo_wr_full;
     assign rx_ready_core = !fifo_wr_full;
 
     // synthesis translate_off

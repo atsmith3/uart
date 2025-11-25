@@ -66,8 +66,8 @@ module uart_tx_path #(
 
     tx_state_t tx_state;
 
-    // Note: fifo_reset input is ignored - async FIFO uses rst_n signals directly
-    // SW can clear FIFO by disabling/re-enabling TX in the control register
+    // fifo_reset provides software control to clear FIFO pointers
+    // Connected to async FIFO's wr_clear input for synchronous reset
 
     //--------------------------------------------------------------------------
     // TX Async FIFO
@@ -80,6 +80,7 @@ module uart_tx_path #(
         // Write interface (wr_clk domain)
         .wr_clk         (wr_clk),
         .wr_rst_n       (wr_rst_n),
+        .wr_clear       (fifo_reset),   // Software FIFO clear
         .wr_en          (wr_en),
         .wr_data        (wr_data),
         .wr_full        (wr_full),
@@ -88,6 +89,7 @@ module uart_tx_path #(
         // Read interface (uart_clk domain)
         .rd_clk         (uart_clk),
         .rd_rst_n       (uart_rst_n),
+        .rd_clear       (1'b0),         // No clear on read side for TX FIFO
         .rd_en          (fifo_rd_en),
         .rd_data        (fifo_rd_data),
         .rd_empty       (fifo_rd_empty),

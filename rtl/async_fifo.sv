@@ -31,6 +31,7 @@ module async_fifo #(
     // Write clock domain
     input  logic                    wr_clk,
     input  logic                    wr_rst_n,
+    input  logic                    wr_clear,    // Synchronous clear in wr_clk domain
     input  logic                    wr_en,
     input  logic [DATA_WIDTH-1:0]   wr_data,
     output logic                    wr_full,
@@ -39,6 +40,7 @@ module async_fifo #(
     // Read clock domain
     input  logic                    rd_clk,
     input  logic                    rd_rst_n,
+    input  logic                    rd_clear,    // Synchronous clear in rd_clk domain
     input  logic                    rd_en,
     output logic [DATA_WIDTH-1:0]   rd_data,
     output logic                    rd_empty,
@@ -98,6 +100,10 @@ module async_fifo #(
         if (!wr_rst_n) begin
             wr_ptr <= '0;
             wr_ptr_gray <= '0;
+        end else if (wr_clear) begin
+            // Synchronous clear - reset pointers
+            wr_ptr <= '0;
+            wr_ptr_gray <= '0;
         end else if (wr_en && !wr_full) begin
             wr_ptr <= wr_ptr + 1'b1;
             wr_ptr_gray <= bin_to_gray(wr_ptr + 1'b1);
@@ -147,6 +153,10 @@ module async_fifo #(
     // Read pointer and Gray code generation
     always_ff @(posedge rd_clk or negedge rd_rst_n) begin
         if (!rd_rst_n) begin
+            rd_ptr <= '0;
+            rd_ptr_gray <= '0;
+        end else if (rd_clear) begin
+            // Synchronous clear - reset pointers
             rd_ptr <= '0;
             rd_ptr_gray <= '0;
         end else if (rd_en && !rd_empty) begin

@@ -46,7 +46,8 @@ struct UartTXFixture {
         // Present data and wait for it to be latched
         dut->tx_data = data;
         dut->tx_valid = 1;
-        tick(true);  // Baud tick to enter START state
+        // Need 16 baud ticks to advance one bit period (TX divides 16× to 1×)
+        for (int j = 0; j < 16; j++) tick(true);
         dut->tx_valid = 0;
 
         // Now capture the transmitted bits (10 total: start + 8 data + stop)
@@ -55,12 +56,13 @@ struct UartTXFixture {
 
         // Capture remaining 9 bits
         for (int i = 0; i < 9; i++) {
-            tick(true);  // Baud tick to advance state
+            // Advance one bit period (16 baud ticks)
+            for (int j = 0; j < 16; j++) tick(true);
             bits.push_back(dut->tx_serial);
         }
 
-        // Extra tick to return to idle
-        tick(true);
+        // Extra bit period to return to idle
+        for (int j = 0; j < 16; j++) tick(true);
 
         return bits;
     }
