@@ -50,13 +50,24 @@ module uart_tx_path #(
     logic                  tx_valid;
     logic                  tx_ready;
 
-    // Synchronized reset for FIFO write side
-    logic wr_rst_n_sync;
-    assign wr_rst_n_sync = wr_rst_n && !fifo_reset;
+    // Prefetch holding register for TX data
+    // FIFO has registered output: rd_data valid 1 cycle after rd_en
+    // Use holding register that prefetches data so it's always ready
+    logic [DATA_WIDTH-1:0] tx_holding_reg;
+    logic                  tx_holding_valid;
+    logic                  tx_data_accepted;  // Track if uart_tx has accepted the current data
 
-    // Synchronized reset for FIFO read side
-    logic uart_rst_n_sync;
-    assign uart_rst_n_sync = uart_rst_n && !fifo_reset;
+    // State: IDLE -> FETCHING -> READY
+    typedef enum logic [1:0] {
+        TX_IDLE     = 2'b00,  // No data available
+        TX_FETCHING = 2'b01,  // Requested data from FIFO, waiting 1 cycle
+        TX_READY    = 2'b10   // Data in holding register, ready to transmit
+    } tx_state_t;
+
+    tx_state_t tx_state;
+
+    // Note: fifo_reset input is ignored - async FIFO uses rst_n signals directly
+    // SW can clear FIFO by disabling/re-enabling TX in the control register
 
     //--------------------------------------------------------------------------
     // TX Async FIFO
@@ -68,7 +79,7 @@ module uart_tx_path #(
     ) tx_fifo (
         // Write interface (wr_clk domain)
         .wr_clk         (wr_clk),
-        .wr_rst_n       (wr_rst_n_sync),
+        .wr_rst_n       (wr_rst_n),
         .wr_en          (wr_en),
         .wr_data        (wr_data),
         .wr_full        (wr_full),
@@ -76,7 +87,7 @@ module uart_tx_path #(
 
         // Read interface (uart_clk domain)
         .rd_clk         (uart_clk),
-        .rd_rst_n       (uart_rst_n_sync),
+        .rd_rst_n       (uart_rst_n),
         .rd_en          (fifo_rd_en),
         .rd_data        (fifo_rd_data),
         .rd_empty       (fifo_rd_empty),
@@ -93,7 +104,7 @@ module uart_tx_path #(
         .uart_clk    (uart_clk),
         .rst_n       (uart_rst_n),
         .baud_tick   (baud_tick),
-        .tx_data     (fifo_rd_data),
+        .tx_data     (tx_holding_reg),  // Use holding register, not FIFO directly
         .tx_valid    (tx_valid),
         .tx_ready    (tx_ready),
         .tx_serial   (tx_serial),
@@ -101,12 +112,76 @@ module uart_tx_path #(
     );
 
     //--------------------------------------------------------------------------
-    // Control Logic
+    // Prefetch Holding Register FSM
     //--------------------------------------------------------------------------
 
-    // Read from FIFO when TX core is ready
-    assign tx_valid = !fifo_rd_empty;
-    assign fifo_rd_en = tx_ready && !fifo_rd_empty && baud_tick;
+    always_ff @(posedge uart_clk or negedge uart_rst_n) begin
+        if (!uart_rst_n) begin
+            tx_holding_reg <= '0;
+            tx_holding_valid <= 1'b0;
+            tx_data_accepted <= 1'b0;
+            tx_state <= TX_IDLE;
+        end else begin
+            case (tx_state)
+                TX_IDLE: begin
+                    tx_data_accepted <= 1'b0;
+                    // Start fetch when FIFO has data
+                    if (!fifo_rd_empty) begin
+                        tx_state <= TX_FETCHING;
+                        // synthesis translate_off
+                        $display("[uart_tx_path] %0t: TX_IDLE -> TX_FETCHING (fifo_rd_empty=%b)", $time, fifo_rd_empty);
+                        // synthesis translate_on
+                    end
+                end
+
+                TX_FETCHING: begin
+                    // Capture data after 1-cycle FIFO latency
+                    tx_holding_reg <= fifo_rd_data;
+                    tx_holding_valid <= 1'b1;
+                    tx_data_accepted <= 1'b0;
+                    tx_state <= TX_READY;
+                    // synthesis translate_off
+                    $display("[uart_tx_path] %0t: TX_FETCHING -> TX_READY (data=0x%h)", $time, fifo_rd_data);
+                    // synthesis translate_on
+                end
+
+                TX_READY: begin
+                    // Track transmission lifecycle:
+                    // 1. tx_active goes HIGH: uart_tx started, set tx_data_accepted
+                    // 2. tx_active goes LOW after being HIGH: transmission complete, clear holding register
+                    if (tx_active && !tx_data_accepted) begin
+                        // uart_tx has started transmission
+                        tx_data_accepted <= 1'b1;
+                        // synthesis translate_off
+                        $display("[uart_tx_path] %0t: TX started (tx_active went HIGH)", $time);
+                        // synthesis translate_on
+                    end else if (!tx_active && tx_data_accepted) begin
+                        // uart_tx was active, now back to idle - transmission complete
+                        tx_holding_valid <= 1'b0;
+                        tx_data_accepted <= 1'b0;
+                        // synthesis translate_off
+                        $display("[uart_tx_path] %0t: TX completed (tx_active went LOW, data=0x%h, fifo_rd_empty=%b)",
+                                 $time, tx_holding_reg, fifo_rd_empty);
+                        // synthesis translate_on
+                        // If more data available, start next fetch immediately
+                        if (!fifo_rd_empty) begin
+                            tx_state <= TX_FETCHING;
+                        end else begin
+                            tx_state <= TX_IDLE;
+                        end
+                    end
+                end
+
+                default: tx_state <= TX_IDLE;
+            endcase
+        end
+    end
+
+    // Assert rd_en when entering FETCHING state
+    assign fifo_rd_en = (tx_state == TX_IDLE) && !fifo_rd_empty;
+
+    // TX valid when holding register has data
+    assign tx_valid = tx_holding_valid;
 
     //--------------------------------------------------------------------------
     // Status Outputs (in uart_clk domain)

@@ -261,59 +261,92 @@ module uart_regs #(
     assign tx_wr_en = reg_wen && (reg_addr == ADDR_TX_DATA) && reg_wstrb[0] && ctrl_tx_en;
     assign tx_wr_data = reg_wdata[7:0];
 
-    // RX FIFO read (on read from RX_DATA register)
-    // FIFO has registered output: rd_data valid 1 cycle after rd_en
-    // Use holding register: prefetch from FIFO so data is always ready
-    logic [7:0] rx_holding_reg;
-    logic rx_holding_valid;
-    logic rx_rd_req;
-    logic rx_rd_en_reg;
-
-    assign rx_rd_req = reg_ren && (reg_addr == ADDR_RX_DATA) && ctrl_rx_en;
-
     // synthesis translate_off
-    always @(negedge rx_empty) begin
-        $display("[uart_regs] t=%0t rx_empty went LOW (data available)", $time);
+    always @(posedge clk) begin
+        if (tx_wr_en) begin
+            $display("[uart_regs] %0t: TX_DATA write 0x%h (reg_wen=%b, reg_addr=%h, reg_wstrb=%h, ctrl_tx_en=%b)",
+                     $time, reg_wdata[7:0], reg_wen, reg_addr, reg_wstrb, ctrl_tx_en);
+        end
     end
     // synthesis translate_on
+
+    // RX FIFO read with prefetch holding register
+    // FIFO has registered output: rd_data valid 1 cycle after rd_en
+    // Use holding register that prefetches data so it's always ready
+    logic [7:0] rx_holding_reg;
+    logic rx_holding_valid;
+    logic rx_fetch_req;
+
+    // State: IDLE -> FETCHING -> READY
+    typedef enum logic [1:0] {
+        RX_IDLE     = 2'b00,  // No data available
+        RX_FETCHING = 2'b01,  // Requested data from FIFO, waiting 1 cycle
+        RX_READY    = 2'b10   // Data in holding register, ready to read
+    } rx_state_t;
+
+    rx_state_t rx_state;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rx_holding_reg <= '0;
             rx_holding_valid <= 1'b0;
-            rx_rd_en_reg <= 1'b0;
+            rx_state <= RX_IDLE;
+        end else if (!ctrl_rx_en) begin
+            // Reset FSM when RX is disabled
+            rx_holding_reg <= '0;
+            rx_holding_valid <= 1'b0;
+            rx_state <= RX_IDLE;
         end else begin
-            // Previous cycle's rd_en means data is now valid
-            if (rx_rd_en_reg) begin
-                rx_holding_reg <= rx_rd_data;
-                rx_holding_valid <= 1'b1;
-                rx_rd_en_reg <= 1'b0;
-                // synthesis translate_off
-                $display("[uart_regs] t=%0t Captured rx_rd_data=0x%h into holding_reg (valid=%b)", $time, rx_rd_data, 1'b1);
-                // synthesis translate_on
-            end
+            case (rx_state)
+                RX_IDLE: begin
+                    // Start fetch when FIFO has data
+                    if (!rx_empty && ctrl_rx_en) begin
+                        rx_state <= RX_FETCHING;
+                        // synthesis translate_off
+                        $display("[uart_regs] %0t: RX_IDLE -> RX_FETCHING (rx_empty=%b)", $time, rx_empty);
+                        // synthesis translate_on
+                    end
+                end
 
-            // After a register read, mark holding register as consumed
-            if (rx_rd_req && rx_holding_valid) begin
-                rx_holding_valid <= 1'b0;
-                // synthesis translate_off
-                $display("[uart_regs] t=%0t Register read consumed holding_reg=0x%h (valid now=%b)", $time, rx_holding_reg, 1'b0);
-                // synthesis translate_on
-            end
+                RX_FETCHING: begin
+                    // Capture data after 1-cycle FIFO latency
+                    rx_holding_reg <= rx_rd_data;
+                    rx_holding_valid <= 1'b1;
+                    rx_state <= RX_READY;
+                    // synthesis translate_off
+                    $display("[uart_regs] %0t: RX_FETCHING -> RX_READY (data=0x%h)", $time, rx_rd_data);
+                    // synthesis translate_on
+                end
 
-            // Start fetch when holding invalid and FIFO has data
-            if (!rx_holding_valid && !rx_empty && ctrl_rx_en && !rx_rd_en_reg) begin
-                rx_rd_en_reg <= 1'b1;
-                // synthesis translate_off
-                $display("[uart_regs] t=%0t Starting FIFO fetch (rx_empty=%b, valid=%b, ctrl_rx_en=%b)",
-                         $time, rx_empty, rx_holding_valid, ctrl_rx_en);
-                // synthesis translate_on
-            end
+                RX_READY: begin
+                    // If register is read, consume holding register
+                    if (reg_ren && (reg_addr == ADDR_RX_DATA) && ctrl_rx_en) begin
+                        rx_holding_valid <= 1'b0;
+                        // synthesis translate_off
+                        $display("[uart_regs] %0t: RX_READY consumed (data=0x%h, rx_empty=%b)",
+                                 $time, rx_holding_reg, rx_empty);
+                        // synthesis translate_on
+                        // If more data available, start next fetch immediately
+                        if (!rx_empty) begin
+                            rx_state <= RX_FETCHING;
+                        end else begin
+                            rx_state <= RX_IDLE;
+                        end
+                    end
+                    // Handle case where holding register becomes invalid (e.g., during init)
+                    // Go back to IDLE if holding register was never validated
+                    else if (!rx_holding_valid) begin
+                        rx_state <= RX_IDLE;
+                    end
+                end
+
+                default: rx_state <= RX_IDLE;
+            endcase
         end
     end
 
-    // Assert rd_en for one cycle to start fetch
-    assign rx_rd_en = rx_rd_en_reg;
+    // Assert rd_en when entering FETCHING state
+    assign rx_rd_en = (rx_state == RX_IDLE) && !rx_empty && ctrl_rx_en;
 
     //--------------------------------------------------------------------------
     // Baud Rate Generator Control

@@ -41,11 +41,39 @@ module uart_tx #(
     logic [DATA_WIDTH-1:0] shift_reg;
     logic [3:0] bit_counter;  // Counts 0-9 (start + 8 data + stop)
 
+    // Baud rate divider: 16× input clock → 1× baud rate
+    // The input baud_tick runs at 16× oversample rate
+    // We need to divide by 16 to get actual baud rate for TX
+    logic [3:0] baud_div_counter;
+    logic baud_tick_1x;
+
+    always_ff @(posedge uart_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            baud_div_counter <= '0;
+        end else if (baud_tick) begin
+            if (baud_div_counter == 4'd15) begin
+                baud_div_counter <= '0;
+            end else begin
+                baud_div_counter <= baud_div_counter + 1'b1;
+            end
+        end
+    end
+
+    assign baud_tick_1x = baud_tick && (baud_div_counter == 4'd15);
+
+    // synthesis translate_off
+    always @(posedge uart_clk) begin
+        if (baud_tick_1x && state != IDLE) begin
+            $display("[uart_tx] %0t: baud_tick_1x in state %0d, bit_counter=%0d", $time, state, bit_counter);
+        end
+    end
+    // synthesis translate_on
+
     // State register
     always_ff @(posedge uart_clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
-        end else if (baud_tick) begin
+        end else if (baud_tick_1x) begin
             state <= next_state;
         end
     end
@@ -78,12 +106,15 @@ module uart_tx #(
         if (!rst_n) begin
             shift_reg <= '0;
             bit_counter <= '0;
-        end else if (baud_tick) begin
+        end else if (baud_tick_1x) begin
             case (state)
                 IDLE: begin
                     if (tx_valid) begin
                         shift_reg <= tx_data;
                         bit_counter <= '0;
+                        // synthesis translate_off
+                        $display("[uart_tx] %0t: Starting transmission of 0x%h", $time, tx_data);
+                        // synthesis translate_on
                     end
                 end
                 START: begin

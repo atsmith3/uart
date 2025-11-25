@@ -59,13 +59,8 @@ module uart_rx_path #(
     // Overrun error (sticky)
     logic                  overrun_error_reg;
 
-    // Synchronized reset for FIFO write side
-    logic uart_rst_n_sync;
-    assign uart_rst_n_sync = uart_rst_n && !fifo_reset;
-
-    // Synchronized reset for FIFO read side
-    logic rd_rst_n_sync;
-    assign rd_rst_n_sync = rd_rst_n && !fifo_reset;
+    // Note: fifo_reset input is ignored - async FIFO uses rst_n signals directly
+    // SW can clear FIFO by disabling/re-enabling RX in the control register
 
     //--------------------------------------------------------------------------
     // Bit Synchronizer for RX Input
@@ -109,7 +104,7 @@ module uart_rx_path #(
     ) rx_fifo (
         // Write interface (uart_clk domain)
         .wr_clk         (uart_clk),
-        .wr_rst_n       (uart_rst_n_sync),
+        .wr_rst_n       (uart_rst_n),
         .wr_en          (fifo_wr_en),
         .wr_data        (rx_data_core),
         .wr_full        (fifo_wr_full),
@@ -117,7 +112,7 @@ module uart_rx_path #(
 
         // Read interface (rd_clk domain)
         .rd_clk         (rd_clk),
-        .rd_rst_n       (rd_rst_n_sync),
+        .rd_rst_n       (rd_rst_n),
         .rd_en          (rd_en),
         .rd_data        (rd_data),
         .rd_empty       (rd_empty),
@@ -132,9 +127,17 @@ module uart_rx_path #(
     assign fifo_wr_en = rx_valid_core && !fifo_wr_full;
     assign rx_ready_core = !fifo_wr_full;
 
+    // synthesis translate_off
+    always @(posedge uart_clk) begin
+        if (fifo_wr_en) begin
+            $display("[uart_rx_path] %0t: Writing 0x%h to RX FIFO", $time, rx_data_core);
+        end
+    end
+    // synthesis translate_on
+
     // Overrun error: trying to write to full FIFO
     always_ff @(posedge uart_clk or negedge uart_rst_n) begin
-        if (!uart_rst_n || fifo_reset) begin
+        if (!uart_rst_n) begin
             overrun_error_reg <= 1'b0;
         end else if (rx_valid_core && fifo_wr_full) begin
             overrun_error_reg <= 1'b1;

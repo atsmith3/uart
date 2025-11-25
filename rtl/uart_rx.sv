@@ -69,6 +69,19 @@ module uart_rx #(
 
     assign start_detected = rx_serial_d && !rx_serial_sync;
 
+    // synthesis translate_off
+    always @(posedge uart_clk) begin
+        if (start_detected && sample_tick) begin
+            $display("[uart_rx] %0t: Start bit detected (rx_serial_d=%b, rx_serial_sync=%b)",
+                     $time, rx_serial_d, rx_serial_sync);
+        end
+        if (sample_tick && state != IDLE) begin
+            $display("[uart_rx] %0t: RX state=%0d, sample_counter=%0d, bit_counter=%0d",
+                     $time, state, sample_counter, bit_counter);
+        end
+    end
+    // synthesis translate_on
+
     // State register
     always_ff @(posedge uart_clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -88,12 +101,18 @@ module uart_rx #(
                 end
             end
             START_BIT: begin
-                if (sample_counter == 5'(OVERSAMPLE_RATE - 1)) begin
-                    // Validate start bit at end of period
+                if (sample_counter == 5'(OVERSAMPLE_RATE / 2)) begin
+                    // Validate start bit at center for noise immunity
+                    if (rx_serial_sync != 1'b0) begin
+                        // False start - abort early
+                        next_state = IDLE;
+                    end
+                end else if (sample_counter == 5'(OVERSAMPLE_RATE - 1)) begin
+                    // End of start bit period - transition to data bits
                     if (rx_serial_sync == 1'b0) begin
                         next_state = DATA_BITS;
                     end else begin
-                        // False start
+                        // False start detected at end
                         next_state = IDLE;
                     end
                 end
@@ -120,7 +139,9 @@ module uart_rx #(
             case (state)
                 IDLE: begin
                     if (start_detected) begin
-                        sample_counter <= '0;
+                        // Align sample counter to hit bit center at count 8
+                        // This synchronizes RX sampling with TX bit boundaries
+                        sample_counter <= 5'(OVERSAMPLE_RATE / 2);  // Set to 8
                     end
                 end
                 START_BIT, DATA_BITS, STOP_BIT: begin
@@ -174,6 +195,9 @@ module uart_rx #(
                 if (rx_serial_sync == 1'b1) begin
                     rx_data <= shift_reg;
                     rx_valid <= 1'b1;
+                    // synthesis translate_off
+                    $display("[uart_rx] %0t: Received valid byte 0x%h", $time, shift_reg);
+                    // synthesis translate_on
                 end
             end else if (rx_valid && rx_ready) begin
                 rx_valid <= 1'b0;

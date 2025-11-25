@@ -180,8 +180,8 @@ module async_fifo #(
     assign rd_almost_empty = (rd_ptr_next == wr_ptr_sync) ||
                              (rd_ptr_next2 == wr_ptr_sync);
 
-    // Read from memory (registered output - standard FIFO behavior)
-    // rd_data updates one cycle after rd_en is asserted
+    // Registered read output (standard FIFO behavior)
+    // rd_data is valid one cycle after rd_en is asserted
     always_ff @(posedge rd_clk or negedge rd_rst_n) begin
         if (!rd_rst_n) begin
             rd_data <= '0;
