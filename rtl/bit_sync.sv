@@ -59,11 +59,11 @@ module bit_sync #(
     assign data_out = sync_chain[STAGES-1];
 
     // Assertions for verification
-    // synthesis translate_off
+`ifdef SIMULATION
     initial begin
         assert (STAGES >= 2 && STAGES <= 3)
             else $error("bit_sync: STAGES must be 2 or 3, got %0d", STAGES);
     end
-    // synthesis translate_on
+`endif
 
 endmodule

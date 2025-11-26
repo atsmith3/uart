@@ -110,7 +110,7 @@ module sync_fifo #(
     assign level = wr_ptr - rd_ptr;
 
     // Assertions for verification
-    // synthesis translate_off
+`ifdef SIMULATION
     initial begin
         // Check DEPTH is power of 2
         assert ((DEPTH & (DEPTH - 1)) == 0 && DEPTH > 0)
@@ -130,10 +130,10 @@ module sync_fifo #(
     end
 
     // Runtime assertions
-    always @(posedge clk) begin
+    always_ff @(posedge clk) begin
         if (rst_n) begin
             // Level should never exceed DEPTH
-            assert (level <= DEPTH)
+            assert (level <= ADDR_WIDTH'(DEPTH))
                 else $error("sync_fifo: level=%0d exceeds DEPTH=%0d", level, DEPTH);
 
             // Consistency checks
@@ -148,6 +148,6 @@ module sync_fifo #(
                 $warning("sync_fifo: Read ignored (FIFO empty)");
         end
     end
-    // synthesis translate_on
+`endif
 
 endmodule

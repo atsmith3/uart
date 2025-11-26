@@ -40,7 +40,7 @@ add_library(verilated_bit_sync STATIC)
 verilate(verilated_bit_sync COVERAGE TRACE
   PREFIX Vbit_sync
   SOURCES ${RTL_ROOT}/bit_sync.sv
-  VERILATOR_ARGS -Wall -Wno-fatal
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
 # Synchronous FIFO
@@ -48,7 +48,15 @@ add_library(verilated_sync_fifo STATIC)
 verilate(verilated_sync_fifo COVERAGE TRACE
   PREFIX Vsync_fifo
   SOURCES ${RTL_ROOT}/sync_fifo.sv
-  VERILATOR_ARGS -Wall -Wno-fatal
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
+# Baud Rate Generator
+add_library(verilated_baud_gen STATIC)
+verilate(verilated_baud_gen COVERAGE TRACE
+  PREFIX Vbaud_gen
+  SOURCES ${RTL_ROOT}/baud_gen.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
 # Module test executable
@@ -56,11 +64,13 @@ add_executable(module_tests
   tests/test_main.cpp
   tests/module/bit_sync_test.cpp
   tests/module/sync_fifo_test.cpp
+  tests/module/baud_gen_test.cpp
 )
 
 target_link_libraries(module_tests
   verilated_bit_sync
   verilated_sync_fifo
+  verilated_baud_gen
   ${Boost_LIBRARIES}
 )
 

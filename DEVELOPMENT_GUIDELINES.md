@@ -1017,18 +1017,81 @@ end
 ### Simulation and Debug
 
 - [ ] Assertions for internal consistency
-- [ ] Debug displays use `synthesis translate_off` pragmas
+- [ ] Debug code wrapped in `` `ifdef SIMULATION`` blocks
 - [ ] No simulation-only logic in synthesizable code
 - [ ] Meaningful signal names (not `tmp`, `sig1`, etc.)
+- [ ] Build system defines SIMULATION for simulation builds
 
 ### Synthesis Considerations
 
 - [ ] No latches (incomplete assignments)
-- [ ] No `initial` blocks (non-synthesizable)
+- [ ] No `initial` blocks except for assertions (wrapped in `` `ifdef SIMULATION``)
 - [ ] No delays (`#10`) in synthesizable code
-- [ ] No `$time`, `$display` without pragma guards
+- [ ] No `$time`, `$display`, `$error`, `$warning` without `` `ifdef SIMULATION`` guards
 - [ ] Multipliers/dividers appropriate for target
 - [ ] RAM inference correct (registered read address)
+
+### Simulation-Only Code Pattern
+
+**Use `` `ifdef SIMULATION`` for all debug and verification code:**
+
+```systemverilog
+module example (
+    input  logic clk,
+    input  logic rst_n,
+    input  logic [7:0] data_in,
+    output logic [7:0] data_out
+);
+
+    // Synthesizable logic
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            data_out <= '0;
+        else
+            data_out <= data_in;
+    end
+
+    // Simulation-only verification code
+`ifdef SIMULATION
+    initial begin
+        // Parameter checks
+        assert (WIDTH >= 1 && WIDTH <= 32)
+            else $error("Invalid WIDTH parameter");
+    end
+
+    // Runtime assertions
+    always @(posedge clk) begin
+        if (rst_n) begin
+            // Check for valid data
+            assert (data_in !== 8'hXX)
+                else $error("Undefined data_in");
+
+            // Warn about suspicious conditions
+            if (data_in == 8'h00)
+                $warning("Zero data detected");
+        end
+    end
+`endif
+
+endmodule
+```
+
+**Build system setup (CMakeLists.txt):**
+```cmake
+# Define SIMULATION for Verilator
+verilate(verilated_module COVERAGE TRACE
+  PREFIX Vmodule
+  SOURCES ${RTL_ROOT}/module.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION  # <-- Define SIMULATION
+)
+```
+
+**Benefits of `` `ifdef SIMULATION``:**
+- More portable than `// synthesis translate_off/on` comments
+- Works with all synthesis tools (Vivado, Quartus, Design Compiler, Genus)
+- Explicit and clear intent
+- Easy to control at build time
+- Enables assertions in simulation, disabled in synthesis
 
 ---
 
