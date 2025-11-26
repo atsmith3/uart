@@ -99,6 +99,14 @@ verilate(verilated_uart_regs COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
+# AXI-Lite Slave Interface
+add_library(verilated_axi_lite_slave_if STATIC)
+verilate(verilated_axi_lite_slave_if COVERAGE TRACE
+  PREFIX Vaxi_lite_slave_if
+  SOURCES ${RTL_ROOT}/axi_lite_slave_if.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
 # UART Top-Level (complete integration)
 add_library(verilated_uart_top STATIC)
 verilate(verilated_uart_top COVERAGE TRACE
@@ -119,6 +127,7 @@ add_executable(module_tests
   tests/module/uart_rx_path_test.cpp
   tests/module/uart_regs_test.cpp
   tests/module/uart_top_test.cpp
+  tests/module/axi_lite_slave_if_test.cpp
 )
 
 target_link_libraries(module_tests
@@ -131,6 +140,7 @@ target_link_libraries(module_tests
   verilated_uart_rx_path
   verilated_uart_regs
   verilated_uart_top
+  verilated_axi_lite_slave_if
   ${Boost_LIBRARIES}
 )
 
