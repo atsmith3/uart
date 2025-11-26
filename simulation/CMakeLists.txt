@@ -67,6 +67,14 @@ verilate(verilated_uart_tx COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
+# UART TX Path (integration)
+add_library(verilated_uart_tx_path STATIC)
+verilate(verilated_uart_tx_path COVERAGE TRACE
+  PREFIX Vuart_tx_path
+  SOURCES ${RTL_ROOT}/uart_tx_path.sv ${RTL_ROOT}/sync_fifo.sv ${RTL_ROOT}/uart_tx.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
@@ -74,6 +82,7 @@ add_executable(module_tests
   tests/module/sync_fifo_test.cpp
   tests/module/baud_gen_test.cpp
   tests/module/uart_tx_test.cpp
+  tests/module/uart_tx_path_test.cpp
 )
 
 target_link_libraries(module_tests
@@ -81,6 +90,7 @@ target_link_libraries(module_tests
   verilated_sync_fifo
   verilated_baud_gen
   verilated_uart_tx
+  verilated_uart_tx_path
   ${Boost_LIBRARIES}
 )
 
