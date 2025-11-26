@@ -1,0 +1,52 @@
+/*
+ * UART RX State Machine
+ *
+ * Deserializes UART frame (8N1) using 16x oversampling
+ * Frame: 1 start bit (LOW) + 8 data bits (LSB first) + 1 stop bit (HIGH)
+ * Sampling: At middle of each bit (sample_counter = 8 of 16)
+ */
+
+digraph uart_rx_fsm {
+    rankdir=LR;
+    node [shape=circle, style=filled, fillcolor=lightblue];
+
+    // States
+    IDLE [fillcolor=lightgreen, label="IDLE\n\nMonitor\nrx_serial"];
+    START_BIT [label="START_BIT\n\nValidate\nstart bit\ncount=0-15"];
+    DATA_BITS [label="DATA_BITS\n\nSample\ndata bits\ncount=0-15\nbit_idx=0-7"];
+    STOP_BIT [label="STOP_BIT\n\nValidate\nstop bit\ncount=0-15"];
+
+    // Error state (returns to IDLE)
+    FALSE_START [shape=diamond, fillcolor=pink, label="False\nStart"];
+
+    // Initial state
+    IDLE [peripheries=2];
+
+    // Transitions from IDLE
+    IDLE -> START_BIT [label="Start bit\ndetected\n(1→0)\n\n[count=0]"];
+
+    // START_BIT transitions
+    START_BIT -> START_BIT [label="count < 8"];
+    START_BIT -> FALSE_START [label="count == 8 &&\nrx_serial != 0\n\n[False start]"];
+    START_BIT -> START_BIT [label="count == 8 &&\nrx_serial == 0\n\n[Valid start]"];
+    START_BIT -> DATA_BITS [label="count == 15\n\n[count=0,\nbit_idx=0]"];
+    FALSE_START -> IDLE [label="Abort"];
+
+    // DATA_BITS transitions
+    DATA_BITS -> DATA_BITS [label="count == 8\n\n[Sample bit,\nshift into\nreg]"];
+    DATA_BITS -> DATA_BITS [label="count < 15\n\n[count++]"];
+    DATA_BITS -> DATA_BITS [label="count == 15 &&\nbit_idx < 7\n\n[count=0,\nbit_idx++]"];
+    DATA_BITS -> STOP_BIT [label="count == 15 &&\nbit_idx == 7\n\n[count=0]"];
+
+    // STOP_BIT transitions
+    STOP_BIT -> STOP_BIT [label="count < 8"];
+    STOP_BIT -> STOP_BIT [label="count == 8 &&\nrx_serial == 1\n\n[Valid frame:\nrx_valid=1,\nrx_data=shift_reg]"];
+    STOP_BIT -> STOP_BIT [label="count == 8 &&\nrx_serial != 1\n\n[Frame error:\nframe_error=1]"];
+    STOP_BIT -> STOP_BIT [label="count > 8 &&\ncount < 15"];
+    STOP_BIT -> STOP_BIT [label="rx_valid &&\n!rx_ready\n\n[Wait for\nhandshake]"];
+    STOP_BIT -> IDLE [label="count == 15 ||\n(rx_valid &&\nrx_ready)\n\n[Clear valid]"];
+
+    // Legend
+    label="\nUART RX State Machine\n\nInputs: rx_serial_sync, sample_tick (16x), rx_ready\nOutputs: rx_data, rx_valid, frame_error, rx_active\n\nAll transitions occur on sample_tick=1\nSampling at count=8 (middle of bit period)\nstart bit detection: falling edge (1→0) on rx_serial_sync";
+    labelloc=b;
+}

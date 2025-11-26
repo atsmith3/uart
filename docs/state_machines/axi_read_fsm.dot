@@ -1,0 +1,33 @@
+/*
+ * AXI-Lite Read Path State Machine
+ *
+ * Implements AXI-Lite read protocol with 2 channels:
+ * - AR (Read Address): arvalid, arready, araddr
+ * - R (Read Data): rvalid, rready, rdata, rresp
+ */
+
+digraph axi_read_fsm {
+    rankdir=LR;
+    node [shape=rectangle, style=filled, fillcolor=lightblue];
+
+    // States
+    R_IDLE [fillcolor=lightgreen, label="R_IDLE\n\nWait for\narvalid"];
+    R_EXECUTE [label="R_EXECUTE\n\nDecode addr\nAssert reg_ren\nCapture data"];
+    R_RESPONSE [label="R_RESPONSE\n\nAssert rvalid\nwith rdata,\nrresp"];
+    R_WAIT_RREADY [label="R_WAIT_RREADY\n\nWait for\nrready"];
+
+    // Initial state
+    R_IDLE [peripheries=2];
+
+    // Transitions
+    R_IDLE -> R_IDLE [label="!arvalid"];
+    R_IDLE -> R_EXECUTE [label="arvalid\n\n[Assert arready]"];
+    R_EXECUTE -> R_RESPONSE [label="Always\n\n[Pulse reg_ren,\nCapture reg_rdata,\nSet rresp]"];
+    R_RESPONSE -> R_WAIT_RREADY [label="Always\n\n[Assert rvalid]"];
+    R_WAIT_RREADY -> R_WAIT_RREADY [label="!rready"];
+    R_WAIT_RREADY -> R_IDLE [label="rready\n\n[Deassert rvalid]"];
+
+    // Legend
+    label="\nAXI-Lite Read State Machine\n\nInputs: arvalid, araddr, rready, reg_rdata\nOutputs: arready, rvalid, rdata, rresp, reg_ren, reg_addr\n\nrresp = OKAY (0) for valid addresses\nrresp = SLVERR (2) for invalid addresses\nreg_ren pulses for 1 cycle in R_EXECUTE state";
+    labelloc=b;
+}

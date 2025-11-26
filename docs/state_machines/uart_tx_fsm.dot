@@ -1,0 +1,33 @@
+/*
+ * UART TX State Machine
+ *
+ * Serializes 8-bit data into UART frame format (8N1)
+ * Frame: 1 start bit (LOW) + 8 data bits (LSB first) + 1 stop bit (HIGH)
+ */
+
+digraph uart_tx_fsm {
+    rankdir=LR;
+    node [shape=circle, style=filled, fillcolor=lightblue];
+
+    // States
+    IDLE [fillcolor=lightgreen, label="IDLE\n\ntx_ready=1\ntx_serial=1"];
+    START [label="START\n\ntx_serial=0\ncount=0-15"];
+    DATA [label="DATA\n\ntx_serial=bit\ncount=0-15\nbit_idx=0-7"];
+    STOP [label="STOP\n\ntx_serial=1\ncount=0-15"];
+
+    // Initial state
+    IDLE [peripheries=2];
+
+    // Transitions
+    IDLE -> START [label="tx_valid &&\ntx_ready\n\n[latch tx_data]"];
+    START -> START [label="count < 15"];
+    START -> DATA [label="count == 15\n\n[count=0,\nbit_idx=0]"];
+    DATA -> DATA [label="count < 15 ||\nbit_idx < 7\n\n[count++,\nif count==15:\n  bit_idx++]"];
+    DATA -> STOP [label="count == 15 &&\nbit_idx == 7\n\n[count=0]"];
+    STOP -> STOP [label="count < 15"];
+    STOP -> IDLE [label="count == 15"];
+
+    // Legend
+    label="\nUART TX State Machine\n\nInputs: tx_valid, baud_tick (16x)\nOutputs: tx_ready, tx_serial, tx_active\n\nAll transitions occur on baud_tick=1\ncount increments only on baud_tick";
+    labelloc=b;
+}

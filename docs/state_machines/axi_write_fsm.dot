@@ -1,0 +1,34 @@
+/*
+ * AXI-Lite Write Path State Machine
+ *
+ * Implements AXI-Lite write protocol with 3 channels:
+ * - AW (Write Address): awvalid, awready, awaddr
+ * - W (Write Data): wvalid, wready, wdata, wstrb
+ * - B (Write Response): bvalid, bready, bresp
+ */
+
+digraph axi_write_fsm {
+    rankdir=LR;
+    node [shape=rectangle, style=filled, fillcolor=lightblue];
+
+    // States
+    W_IDLE [fillcolor=lightgreen, label="W_IDLE\n\nWait for\nawvalid &&\nwvalid"];
+    W_EXECUTE [label="W_EXECUTE\n\nDecode addr\nAssert reg_wen\nCapture data"];
+    W_RESPONSE [label="W_RESPONSE\n\nAssert bvalid\nwith OKAY or\nSLVERR"];
+    W_WAIT_BREADY [label="W_WAIT_BREADY\n\nWait for\nbready"];
+
+    // Initial state
+    W_IDLE [peripheries=2];
+
+    // Transitions
+    W_IDLE -> W_IDLE [label="!(awvalid &&\nwvalid)"];
+    W_IDLE -> W_EXECUTE [label="awvalid &&\nwvalid\n\n[Assert awready,\nwready]"];
+    W_EXECUTE -> W_RESPONSE [label="Always\n\n[Pulse reg_wen,\nSet bresp]"];
+    W_RESPONSE -> W_WAIT_BREADY [label="Always\n\n[Assert bvalid]"];
+    W_WAIT_BREADY -> W_WAIT_BREADY [label="!bready"];
+    W_WAIT_BREADY -> W_IDLE [label="bready\n\n[Deassert bvalid]"];
+
+    // Legend
+    label="\nAXI-Lite Write State Machine\n\nInputs: awvalid, awaddr, wvalid, wdata, wstrb, bready\nOutputs: awready, wready, bvalid, bresp, reg_wen, reg_wdata, reg_addr\n\nbresp = OKAY (0) for valid addresses\nbresp = SLVERR (2) for invalid addresses\nreg_wen pulses for 1 cycle in W_EXECUTE state";
+    labelloc=b;
+}

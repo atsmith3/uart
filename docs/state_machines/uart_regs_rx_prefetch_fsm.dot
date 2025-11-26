@@ -1,0 +1,38 @@
+/*
+ * UART Register File - RX Prefetch State Machine
+ *
+ * Handles RX FIFO read with 1-cycle latency (registered output)
+ * Prefetches data into holding register to hide latency
+ *
+ * CRITICAL: This FSM prevents reading stale data from registered FIFO output
+ */
+
+digraph uart_regs_rx_prefetch_fsm {
+    rankdir=LR;
+    node [shape=rectangle, style=filled, fillcolor=lightblue];
+
+    // States
+    RX_IDLE [fillcolor=lightgreen, label="RX_IDLE\n\nNo data\navailable"];
+    RX_FETCHING [fillcolor=yellow, label="RX_FETCHING\n\nWait for\nFIFO read\nlatency\n(1 cycle)"];
+    RX_READY [fillcolor=lightgreen, label="RX_READY\n\nData in\nholding\nregister"];
+
+    // Initial state
+    RX_IDLE [peripheries=2];
+
+    // Transitions from RX_IDLE
+    RX_IDLE -> RX_IDLE [label="rx_empty"];
+    RX_IDLE -> RX_FETCHING [label="!rx_empty &&\nctrl_rx_en\n\n[Pulse fifo_rd_en]"];
+
+    // Transitions from RX_FETCHING
+    RX_FETCHING -> RX_FETCHING [label="Wait 1 cycle"];
+    RX_FETCHING -> RX_READY [label="Next cycle\n\n[Latch fifo_rd_data\ninto holding_reg]"];
+
+    // Transitions from RX_READY
+    RX_READY -> RX_READY [label="!reg_read_rx"];
+    RX_READY -> RX_IDLE [label="reg_read_rx &&\nrx_empty\n\n[Return holding_reg\nto AXI]"];
+    RX_READY -> RX_FETCHING [label="reg_read_rx &&\n!rx_empty &&\nctrl_rx_en\n\n[Return holding_reg,\nPulse fifo_rd_en\nfor next byte]"];
+
+    // Legend
+    label="\nUART RX Prefetch FSM\n\nProblem: sync_fifo has registered output (1-cycle latency)\nSolution: Prefetch data into holding register\n\nInputs: rx_empty, ctrl_rx_en, reg_read_rx (AXI read of RX_DATA)\nOutputs: fifo_rd_en (pulse), holding_reg, rx_data_to_axi\n\nreg_read_rx = (reg_ren && reg_addr == RX_DATA)\nholding_reg always contains valid data in RX_READY state";
+    labelloc=b;
+}
