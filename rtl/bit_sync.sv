@@ -29,7 +29,8 @@
  */
 
 module bit_sync #(
-    parameter int STAGES = 2  // Number of synchronization stages (2 or 3)
+    parameter int  STAGES      = 2,   // Number of synchronization stages (2 or 3)
+    parameter logic RESET_VALUE = 1'b0 // Reset value for sync chain (0 or 1)
 ) (
     // Destination clock domain
     input  logic clk_dst,
@@ -48,7 +49,8 @@ module bit_sync #(
     // Synchronization flip-flop chain
     always_ff @(posedge clk_dst or negedge rst_n_dst) begin
         if (!rst_n_dst) begin
-            sync_chain <= '0;
+            // Reset to specified value (replicated across all stages)
+            sync_chain <= {STAGES{RESET_VALUE}};
         end else begin
             // Shift through synchronization stages
             sync_chain <= {sync_chain[STAGES-2:0], data_in};
