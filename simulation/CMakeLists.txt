@@ -59,18 +59,28 @@ verilate(verilated_baud_gen COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
+# UART Transmitter
+add_library(verilated_uart_tx STATIC)
+verilate(verilated_uart_tx COVERAGE TRACE
+  PREFIX Vuart_tx
+  SOURCES ${RTL_ROOT}/uart_tx.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
   tests/module/bit_sync_test.cpp
   tests/module/sync_fifo_test.cpp
   tests/module/baud_gen_test.cpp
+  tests/module/uart_tx_test.cpp
 )
 
 target_link_libraries(module_tests
   verilated_bit_sync
   verilated_sync_fifo
   verilated_baud_gen
+  verilated_uart_tx
   ${Boost_LIBRARIES}
 )
 
