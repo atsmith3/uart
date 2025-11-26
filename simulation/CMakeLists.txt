@@ -91,6 +91,14 @@ verilate(verilated_uart_rx_path COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
+# UART Register File
+add_library(verilated_uart_regs STATIC)
+verilate(verilated_uart_regs COVERAGE TRACE
+  PREFIX Vuart_regs
+  SOURCES ${RTL_ROOT}/uart_regs.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
@@ -101,6 +109,7 @@ add_executable(module_tests
   tests/module/uart_tx_path_test.cpp
   tests/module/uart_rx_test.cpp
   tests/module/uart_rx_path_test.cpp
+  tests/module/uart_regs_test.cpp
 )
 
 target_link_libraries(module_tests
@@ -111,6 +120,7 @@ target_link_libraries(module_tests
   verilated_uart_tx_path
   verilated_uart_rx
   verilated_uart_rx_path
+  verilated_uart_regs
   ${Boost_LIBRARIES}
 )
 
