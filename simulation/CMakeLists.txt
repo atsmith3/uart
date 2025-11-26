@@ -43,14 +43,24 @@ verilate(verilated_bit_sync COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal
 )
 
+# Synchronous FIFO
+add_library(verilated_sync_fifo STATIC)
+verilate(verilated_sync_fifo COVERAGE TRACE
+  PREFIX Vsync_fifo
+  SOURCES ${RTL_ROOT}/sync_fifo.sv
+  VERILATOR_ARGS -Wall -Wno-fatal
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
   tests/module/bit_sync_test.cpp
+  tests/module/sync_fifo_test.cpp
 )
 
 target_link_libraries(module_tests
   verilated_bit_sync
+  verilated_sync_fifo
   ${Boost_LIBRARIES}
 )
 
