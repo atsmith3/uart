@@ -303,22 +303,19 @@ module uart_regs #(
     // ========================================
     // Register Read Mux
     // ========================================
-    always_ff @(posedge uart_clk or negedge rst_n) begin
-        if (!rst_n) begin
-            reg_rdata <= '0;
-        end else if (reg_read) begin
-            case (reg_addr)
-                ADDR_CTRL:       reg_rdata <= {30'h0, ctrl_reg};
-                ADDR_STATUS:     reg_rdata <= status_value;
-                ADDR_TX_DATA:    reg_rdata <= 32'h0;  // Write-only
-                ADDR_RX_DATA:    reg_rdata <= {24'h0, rx_holding_reg};
-                ADDR_BAUD_DIV:   reg_rdata <= {16'h0, baud_div_reg};
-                ADDR_INT_ENABLE: reg_rdata <= {28'h0, int_enable_reg};
-                ADDR_INT_STATUS: reg_rdata <= {28'h0, int_status_reg};
-                ADDR_FIFO_CTRL:  reg_rdata <= {30'h0, fifo_ctrl_reg};
-                default:         reg_rdata <= 32'h0;
-            endcase
-        end
+    // Combinational read for same-cycle availability (required by AXI-Lite interface)
+    always_comb begin
+        case (reg_addr)
+            ADDR_CTRL:       reg_rdata = {30'h0, ctrl_reg};
+            ADDR_STATUS:     reg_rdata = status_value;
+            ADDR_TX_DATA:    reg_rdata = 32'h0;  // Write-only
+            ADDR_RX_DATA:    reg_rdata = {24'h0, rx_holding_reg};
+            ADDR_BAUD_DIV:   reg_rdata = {16'h0, baud_div_reg};
+            ADDR_INT_ENABLE: reg_rdata = {28'h0, int_enable_reg};
+            ADDR_INT_STATUS: reg_rdata = {28'h0, int_status_reg};
+            ADDR_FIFO_CTRL:  reg_rdata = {30'h0, fifo_ctrl_reg};
+            default:         reg_rdata = 32'h0;
+        endcase
     end
 
     // Error signal (unused, reserved for future)

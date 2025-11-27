@@ -176,9 +176,10 @@ BOOST_FIXTURE_TEST_CASE(uart_top_tx_fifo_write, UartTopFixture) {
     // Write byte to TX_DATA
     write_reg(ADDR_TX_DATA, 0x000000A5);
 
-    // STATUS should show TX FIFO not empty
+    // STATUS should show TX active (byte pulled from FIFO immediately)
+    // With baud_divisor=1, FIFO drains fast, but TX should be active
     uint32_t status = read_reg(ADDR_STATUS);
-    BOOST_CHECK_EQUAL((status >> 0) & 1, 0);  // TX_EMPTY = 0
+    BOOST_CHECK_EQUAL((status >> 4) & 1, 1);  // TX_ACTIVE = 1
 }
 
 // Test 4: Transmit byte (end-to-end TX)
