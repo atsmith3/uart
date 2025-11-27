@@ -91,6 +91,38 @@ verilate(verilated_uart_rx_path COVERAGE TRACE
   VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
 )
 
+# UART Register File
+add_library(verilated_uart_regs STATIC)
+verilate(verilated_uart_regs COVERAGE TRACE
+  PREFIX Vuart_regs
+  SOURCES ${RTL_ROOT}/uart_regs.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
+# AXI-Lite Slave Interface
+add_library(verilated_axi_lite_slave_if STATIC)
+verilate(verilated_axi_lite_slave_if COVERAGE TRACE
+  PREFIX Vaxi_lite_slave_if
+  SOURCES ${RTL_ROOT}/axi_lite_slave_if.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
+# UART Top-Level (complete integration)
+add_library(verilated_uart_top STATIC)
+verilate(verilated_uart_top COVERAGE TRACE
+  PREFIX Vuart_top
+  SOURCES ${RTL_ROOT}/uart_top.sv ${RTL_ROOT}/uart_regs.sv ${RTL_ROOT}/baud_gen.sv ${RTL_ROOT}/uart_tx_path.sv ${RTL_ROOT}/uart_tx.sv ${RTL_ROOT}/uart_rx_path.sv ${RTL_ROOT}/uart_rx.sv ${RTL_ROOT}/bit_sync.sv ${RTL_ROOT}/sync_fifo.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
+# UART AXI Top-Level (AXI-Lite + UART integration)
+add_library(verilated_uart_axi_top STATIC)
+verilate(verilated_uart_axi_top COVERAGE TRACE
+  PREFIX Vuart_axi_top
+  SOURCES ${RTL_ROOT}/uart_axi_top.sv ${RTL_ROOT}/axi_lite_slave_if.sv ${RTL_ROOT}/uart_top.sv ${RTL_ROOT}/uart_regs.sv ${RTL_ROOT}/baud_gen.sv ${RTL_ROOT}/uart_tx_path.sv ${RTL_ROOT}/uart_tx.sv ${RTL_ROOT}/uart_rx_path.sv ${RTL_ROOT}/uart_rx.sv ${RTL_ROOT}/bit_sync.sv ${RTL_ROOT}/sync_fifo.sv
+  VERILATOR_ARGS -Wall -Wno-fatal -DSIMULATION
+)
+
 # Module test executable
 add_executable(module_tests
   tests/test_main.cpp
@@ -101,6 +133,10 @@ add_executable(module_tests
   tests/module/uart_tx_path_test.cpp
   tests/module/uart_rx_test.cpp
   tests/module/uart_rx_path_test.cpp
+  tests/module/uart_regs_test.cpp
+  tests/module/uart_top_test.cpp
+  tests/module/axi_lite_slave_if_test.cpp
+  tests/module/uart_axi_top_test.cpp
 )
 
 target_link_libraries(module_tests
@@ -111,6 +147,10 @@ target_link_libraries(module_tests
   verilated_uart_tx_path
   verilated_uart_rx
   verilated_uart_rx_path
+  verilated_uart_regs
+  verilated_uart_top
+  verilated_axi_lite_slave_if
+  verilated_uart_axi_top
   ${Boost_LIBRARIES}
 )
 
