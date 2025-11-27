@@ -161,11 +161,12 @@ module axi_lite_slave_if #(
                     wready <= 1'b0;
 
                     // Generate response
-                    bvalid <= 1'b1;
-                    bresp <= wr_error_latched ? AXI_RESP_SLVERR : AXI_RESP_OKAY;
-
-                    // Wait for bready
-                    if (bready) begin
+                    if (!bvalid) begin
+                        // First cycle in W_RESP: assert bvalid
+                        bvalid <= 1'b1;
+                        bresp <= wr_error_latched ? AXI_RESP_SLVERR : AXI_RESP_OKAY;
+                    end else if (bready) begin
+                        // Wait for bready after bvalid is asserted
                         bvalid <= 1'b0;
                         write_state <= W_IDLE;
                     end
@@ -176,8 +177,23 @@ module axi_lite_slave_if #(
         end
     end
 
-    // Connect write address and data to register interface
-    assign reg_addr = (write_state == W_IDLE && awvalid && wvalid) ? aw_word_addr : wr_addr_latched;
+    // Connect address to register interface (mux between read and write)
+    // Priority: active read/write in progress, then new transactions
+    logic [REG_ADDR_WIDTH-1:0] rd_addr_latched;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_addr_latched <= '0;
+        end else if (read_state == R_IDLE && arvalid) begin
+            rd_addr_latched <= ar_word_addr;
+        end
+    end
+
+    // Mux between read and write paths
+    assign reg_addr = (read_state != R_IDLE) ? rd_addr_latched :
+                      (write_state == W_IDLE && awvalid && wvalid) ? aw_word_addr :
+                      wr_addr_latched;
+
     assign reg_wdata = (write_state == W_IDLE && awvalid && wvalid) ? wdata : wr_data_latched;
 
     // ========================================
@@ -227,12 +243,13 @@ module axi_lite_slave_if #(
 
                 R_RESP: begin
                     // Generate response
-                    rvalid <= 1'b1;
-                    rdata <= rd_data_latched;
-                    rresp <= rd_error_latched ? AXI_RESP_SLVERR : AXI_RESP_OKAY;
-
-                    // Wait for rready
-                    if (rready) begin
+                    if (!rvalid) begin
+                        // First cycle in R_RESP: assert rvalid
+                        rvalid <= 1'b1;
+                        rdata <= rd_data_latched;
+                        rresp <= rd_error_latched ? AXI_RESP_SLVERR : AXI_RESP_OKAY;
+                    end else if (rready) begin
+                        // Wait for rready after rvalid is asserted
                         rvalid <= 1'b0;
                         read_state <= R_IDLE;
                     end

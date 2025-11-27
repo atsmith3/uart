@@ -217,6 +217,9 @@ BOOST_FIXTURE_TEST_CASE(axi_slave_single_read, AXILiteSlaveFixture) {
     dut->arvalid = 0;
     tick();
 
+    // Wait one more cycle for rvalid to be asserted
+    tick();
+
     // Check read response
     BOOST_CHECK_EQUAL(dut->rvalid, 1);
     BOOST_CHECK_EQUAL(dut->rdata, 0x12345678);
